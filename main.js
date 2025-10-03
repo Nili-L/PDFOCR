@@ -65,9 +65,9 @@ fileInput.addEventListener('change', (e) => {
 
 // Handle File Selection
 async function handleFileSelect(file) {
-    // Check file size (50MB limit)
-    if (file.size > 50 * 1024 * 1024) {
-        alert('File size exceeds 50MB limit');
+    // Check file size (1000MB limit)
+    if (file.size > 1000 * 1024 * 1024) {
+        alert('File size exceeds 1000MB limit');
         return;
     }
 
