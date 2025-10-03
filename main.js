@@ -475,13 +475,61 @@ copyBtn.addEventListener('click', async () => {
     }
 });
 
-// Download as TXT
+// Download as TXT with verification report
 downloadBtn.addEventListener('click', () => {
-    const blob = new Blob([extractedText], { type: 'text/plain' });
+    let content = '';
+
+    // Add verification report if available
+    if (comparisonResult) {
+        content += '=' .repeat(80) + '\n';
+        content += 'VERIFICATION REPORT\n';
+        content += '='.repeat(80) + '\n\n';
+
+        content += `Overall Assessment: ${comparisonResult.overallAssessment}\n\n`;
+
+        if (comparisonResult.hasEmbeddedText) {
+            content += `Similarity Score: ${comparisonResult.similarity}%\n\n`;
+        }
+
+        content += `Semantic Integrity: ${comparisonResult.semanticIntegrity}\n\n`;
+
+        if (comparisonResult.criticalErrors && comparisonResult.criticalErrors.length > 0) {
+            content += 'CRITICAL ERRORS:\n';
+            comparisonResult.criticalErrors.forEach(error => {
+                content += `  - ${error}\n`;
+            });
+            content += '\n';
+        }
+
+        if (comparisonResult.structuralDifferences && comparisonResult.structuralDifferences.length > 0) {
+            content += 'STRUCTURAL DIFFERENCES:\n';
+            comparisonResult.structuralDifferences.forEach(diff => {
+                content += `  - ${diff}\n`;
+            });
+            content += '\n';
+        }
+
+        if (comparisonResult.textAccuracyIssues && comparisonResult.textAccuracyIssues.length > 0) {
+            content += 'TEXT ACCURACY ISSUES:\n';
+            comparisonResult.textAccuracyIssues.forEach(issue => {
+                content += `  - ${issue}\n`;
+            });
+            content += '\n';
+        }
+
+        content += '='.repeat(80) + '\n';
+        content += 'EXTRACTED TEXT\n';
+        content += '='.repeat(80) + '\n\n';
+    }
+
+    // Add extracted text
+    content += extractedText;
+
+    const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${currentFile.name.replace('.pdf', '')}_extracted.txt`;
+    a.download = `${currentFile.name.replace('.pdf', '')}_ocr_verified.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
