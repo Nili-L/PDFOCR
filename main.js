@@ -306,34 +306,45 @@ async function extractEmbeddedText(pdf) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
 
-        // Reconstruct text with proper spacing and line breaks
-        let pageText = '';
+        // Group text items by line (Y position)
+        const lines = [];
+        let currentLine = [];
         let lastY = null;
 
-        textContent.items.forEach((item, index) => {
+        textContent.items.forEach((item) => {
             const currentY = item.transform[5]; // Y position
-            const text = item.str;
 
-            if (lastY !== null) {
-                // New line if Y position changed significantly
-                if (Math.abs(currentY - lastY) > 5) {
-                    pageText += '\n';
-                }
-                // Same line - check if we need a space
-                else {
-                    // Add space if previous text didn't end with space and current doesn't start with space
-                    if (pageText.length > 0 &&
-                        !pageText.endsWith(' ') &&
-                        !pageText.endsWith('\n') &&
-                        !text.startsWith(' ')) {
-                        pageText += ' ';
-                    }
+            // Check if this is a new line
+            if (lastY !== null && Math.abs(currentY - lastY) > 5) {
+                if (currentLine.length > 0) {
+                    lines.push(currentLine);
+                    currentLine = [];
                 }
             }
 
-            // Add the text as-is (preserves any spaces within the text item)
-            pageText += text;
+            currentLine.push({
+                text: item.str,
+                x: item.transform[4],
+                dir: item.dir || 'ltr'
+            });
+
             lastY = currentY;
+        });
+
+        // Don't forget the last line
+        if (currentLine.length > 0) {
+            lines.push(currentLine);
+        }
+
+        // Reconstruct text line by line
+        let pageText = '';
+        lines.forEach(line => {
+            // Sort items by X position (left to right)
+            line.sort((a, b) => a.x - b.x);
+
+            // Join items with spaces
+            const lineText = line.map(item => item.text).join(' ');
+            pageText += lineText + '\n';
         });
 
         fullText += `\n--- Page ${i} ---\n${pageText.trim()}\n`;
