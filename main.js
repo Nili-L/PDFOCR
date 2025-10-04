@@ -309,33 +309,31 @@ async function extractEmbeddedText(pdf) {
         // Reconstruct text with proper spacing and line breaks
         let pageText = '';
         let lastY = null;
-        let lastX = null;
 
         textContent.items.forEach((item, index) => {
             const currentY = item.transform[5]; // Y position
-            const currentX = item.transform[4]; // X position
             const text = item.str;
 
             if (lastY !== null) {
                 // New line if Y position changed significantly
                 if (Math.abs(currentY - lastY) > 5) {
                     pageText += '\n';
-                    lastX = null;
                 }
-                // Add space if on same line but with horizontal gap
-                else if (lastX !== null) {
-                    const gap = currentX - lastX;
-                    // Add space if there's a meaningful gap (more than 1 pixel)
-                    if (gap > 1) {
+                // Same line - check if we need a space
+                else {
+                    // Add space if previous text didn't end with space and current doesn't start with space
+                    if (pageText.length > 0 &&
+                        !pageText.endsWith(' ') &&
+                        !pageText.endsWith('\n') &&
+                        !text.startsWith(' ')) {
                         pageText += ' ';
                     }
                 }
             }
 
-            // Add the text (it may already contain spaces)
+            // Add the text as-is (preserves any spaces within the text item)
             pageText += text;
             lastY = currentY;
-            lastX = currentX + item.width;
         });
 
         fullText += `\n--- Page ${i} ---\n${pageText.trim()}\n`;
