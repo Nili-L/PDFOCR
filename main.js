@@ -333,55 +333,14 @@ async function extractEmbeddedText(pdf) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
 
-        // Group text items by line (Y position)
-        const lines = [];
-        let currentLine = [];
-        let lastY = null;
+        // Let PDF.js handle the ordering
+        const pageText = textContent.items
+            .map(item => item.str)
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim();
 
-        textContent.items.forEach((item) => {
-            const currentY = item.transform[5]; // Y position
-
-            // Check if this is a new line
-            if (lastY !== null && Math.abs(currentY - lastY) > 5) {
-                if (currentLine.length > 0) {
-                    lines.push(currentLine);
-                    currentLine = [];
-                }
-            }
-
-            currentLine.push({
-                text: item.str,
-                x: item.transform[4],
-                dir: item.dir || 'ltr'
-            });
-
-            lastY = currentY;
-        });
-
-        // Don't forget the last line
-        if (currentLine.length > 0) {
-            lines.push(currentLine);
-        }
-
-        // Reconstruct text line by line
-        let pageText = '';
-        lines.forEach(line => {
-            // Check if line contains RTL text
-            const hasRTL = line.some(item => item.dir === 'rtl');
-
-            if (hasRTL) {
-                // Sort RIGHT to LEFT for Hebrew/Arabic
-                line.sort((a, b) => b.x - a.x);
-            } else {
-                // Sort LEFT to RIGHT for English
-                line.sort((a, b) => a.x - b.x);
-            }
-
-            const lineText = line.map(item => item.text).join(' ');
-            pageText += lineText + '\n';
-        });
-
-        fullText += `\n--- Page ${i} ---\n${pageText.trim()}\n`;
+        fullText += `\n--- Page ${i} ---\n${pageText}\n`;
     }
 
     return fullText.trim();
