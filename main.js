@@ -386,22 +386,32 @@ function preprocessImageForOCR(context, width, height) {
     const imageData = context.getImageData(0, 0, width, height);
     const data = imageData.data;
 
-    // Convert to grayscale with improved contrast and sharpening
+    // First pass: Convert to grayscale and apply contrast
+    const grayscaleData = new Uint8ClampedArray(width * height);
+
     for (let i = 0; i < data.length; i += 4) {
         // Calculate grayscale value using luminosity method
         const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        grayscaleData[i / 4] = gray;
+    }
 
-        // Apply stronger contrast enhancement
-        const contrast = 1.5; // Increase contrast by 50%
+    // Calculate Otsu's threshold for adaptive binarization
+    const threshold = calculateOtsuThreshold(grayscaleData);
+
+    // Second pass: Apply threshold and high contrast
+    for (let i = 0; i < data.length; i += 4) {
+        const gray = grayscaleData[i / 4];
+
+        // Apply very strong contrast before thresholding
+        const contrast = 2.0; // Double the contrast
         const factor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
         let enhanced = factor * (gray - 128) + 128;
 
         // Clamp values
         enhanced = Math.max(0, Math.min(255, enhanced));
 
-        // Apply adaptive thresholding for better text separation
-        const threshold = 160;
-        const final = enhanced > threshold ? 255 : enhanced < 60 ? 0 : enhanced;
+        // Apply Otsu threshold for sharp black/white separation
+        const final = enhanced > threshold ? 255 : 0;
 
         data[i] = final;     // Red
         data[i + 1] = final; // Green
@@ -411,6 +421,51 @@ function preprocessImageForOCR(context, width, height) {
 
     // Put the processed image back
     context.putImageData(imageData, 0, 0);
+}
+
+// Calculate optimal threshold using Otsu's method
+function calculateOtsuThreshold(grayscaleData) {
+    // Build histogram
+    const histogram = new Array(256).fill(0);
+    for (let i = 0; i < grayscaleData.length; i++) {
+        histogram[Math.floor(grayscaleData[i])]++;
+    }
+
+    // Total number of pixels
+    const total = grayscaleData.length;
+
+    let sum = 0;
+    for (let i = 0; i < 256; i++) {
+        sum += i * histogram[i];
+    }
+
+    let sumB = 0;
+    let wB = 0;
+    let wF = 0;
+    let maxVariance = 0;
+    let threshold = 0;
+
+    for (let i = 0; i < 256; i++) {
+        wB += histogram[i];
+        if (wB === 0) continue;
+
+        wF = total - wB;
+        if (wF === 0) break;
+
+        sumB += i * histogram[i];
+
+        const mB = sumB / wB;
+        const mF = (sum - sumB) / wF;
+
+        const variance = wB * wF * (mB - mF) * (mB - mF);
+
+        if (variance > maxVariance) {
+            maxVariance = variance;
+            threshold = i;
+        }
+    }
+
+    return threshold;
 }
 
 // Extract Text from PDF via OCR
@@ -438,8 +493,8 @@ async function extractTextFromPdf(pdf) {
             progressText.textContent = `OCR processing page ${i} of ${pdf.numPages}...`;
 
             const page = await pdf.getPage(i);
-            // Increase scale to 4.0 for maximum resolution and better OCR accuracy
-            const viewport = page.getViewport({ scale: 4.0 });
+            // Increase scale to 6.0 for maximum resolution and better OCR accuracy
+            const viewport = page.getViewport({ scale: 6.0 });
 
             // Render page to canvas with higher quality
             const canvas = document.createElement('canvas');
