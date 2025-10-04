@@ -54,7 +54,7 @@ The built files will be in the `dist` directory. You can serve them with any sta
 
 ## How to Use
 
-1. **Upload a PDF**: Click the upload area or drag and drop a PDF file (max 1000MB)
+1. **Upload a PDF**: Click the upload area or drag and drop a PDF file (max 500MB)
 2. **Preview**: View thumbnail previews of your PDF pages
 3. **Process**: Click "Start OCR Processing" to extract text
 4. **View Results**: See extracted text with statistics
@@ -63,7 +63,7 @@ The built files will be in the `dist` directory. You can serve them with any sta
 ## Performance Notes
 
 - **Processing time**: Depends on PDF size and complexity (typically 2-5 seconds per page)
-- **File size limit**: 1000MB (1GB) maximum
+- **File size limit**: 500MB maximum
 - **Languages**: Currently supports English (can be extended to other languages)
 - **Browser compatibility**: Works on modern browsers (Chrome, Firefox, Safari, Edge)
 
@@ -122,7 +122,7 @@ pdf-ocr-app/
 - **Solution**: Increase the viewport scale in `main.js` (line 137) from 2.0 to 3.0 or higher.
 
 ### Issue: Can't upload PDF
-- **Solution**: Ensure file is under 1000MB and is a valid PDF format.
+- **Solution**: Ensure file is under 500MB and is a valid PDF format.
 
 ## Privacy & Security
 
