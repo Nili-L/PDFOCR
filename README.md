@@ -9,8 +9,9 @@ A client-side web application that extracts text from PDF and DOCX files using T
 - 📊 **Live progress tracking** with visual progress bar
 - 👁️ **PDF preview** - see thumbnail previews of your PDF pages
 - ✅ **Integrity verification** - compare OCR results with embedded text for PDFs
+- 🏥 **Medical metadata extraction** - automatically extract and categorize medical information
 - 📋 **Copy to clipboard** - easily copy extracted text
-- 💾 **Download as TXT** - save extracted text with verification report
+- 💾 **Download as TXT** - save extracted text with verification report and metadata
 - 📈 **Statistics** - character count, word count, page count
 - 🌐 **Multi-language support** - Hebrew and English OCR for PDFs
 - 🎨 **Beautiful UI** - modern, responsive design
@@ -60,8 +61,27 @@ The built files will be in the `dist` directory. You can serve them with any sta
 1. **Upload a Document**: Click the upload area or drag and drop a PDF or DOCX file (max 500MB)
 2. **Preview**: View thumbnail previews of your PDF pages (DOCX files display file info only)
 3. **Process**: Click "Start OCR Processing" to extract text
-4. **View Results**: See extracted text with statistics and verification report
-5. **Export**: Copy to clipboard or download as TXT file with verification data
+4. **View Results**: See extracted text with statistics, verification report, and medical metadata
+5. **Export**: Copy to clipboard or download as TXT file with all extracted data
+
+## Medical Metadata Extraction
+
+The application automatically extracts and categorizes medical information from documents:
+
+- **📅 Dates** - Multiple date formats (MM/DD/YYYY, etc.)
+- **📆 Date Types** - Appointment, admission, discharge, procedure, test, follow-up
+- **👨‍⚕️ Providers** - Doctor names with credentials (MD, DO, NP, PA, RN)
+- **🏥 Institutions** - Hospitals, medical centers, clinics
+- **🏢 Departments** - Cardiology, radiology, emergency, etc.
+- **⚕️ Specialties** - Medical specialties mentioned in document
+- **🫀 Body Areas** - Head, chest, abdomen, extremities, etc.
+- **🔬 Tests Performed** - Test indicators and examination mentions
+- **🧪 Test Types** - X-ray, MRI, CT scan, blood test, etc.
+- **💊 Medications** - Specific medication names
+- **💉 Medication Types** - Antibiotics, painkillers, blood pressure meds, etc.
+- **🩺 Diagnoses** - Diagnosis statements and impressions
+
+All metadata is displayed in an organized card layout and included in downloaded files for easy categorization and record-keeping.
 
 ## Performance Notes
 
