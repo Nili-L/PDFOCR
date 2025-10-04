@@ -470,16 +470,17 @@ function calculateOtsuThreshold(grayscaleData) {
 
 // Extract Text from PDF via OCR
 async function extractTextFromPdf(pdf) {
-    // Support Hebrew and English with optimized settings
-    const worker = await createWorker(['heb', 'eng'], 1, {
+    // Focus on Hebrew first, then English as fallback
+    const worker = await createWorker('heb', 1, {
         logger: () => {} // Suppress verbose logging
     });
 
-    // Configure Tesseract for higher accuracy
+    // Configure Tesseract for higher accuracy with Hebrew focus
     await worker.setParameters({
-        tessedit_pageseg_mode: '3', // Fully automatic page segmentation (no OSD)
-        tessedit_ocr_engine_mode: '1', // Use both LSTM + legacy for best accuracy
+        tessedit_pageseg_mode: '6', // Assume a single uniform block of text
+        tessedit_ocr_engine_mode: '2', // Use LSTM neural network only (best for modern text)
         preserve_interword_spaces: '1',
+        tessedit_char_whitelist: '',
     });
 
     let fullText = '';
@@ -509,8 +510,8 @@ async function extractTextFromPdf(pdf) {
                 intent: 'print' // Use print-quality rendering
             }).promise;
 
-            // Apply image preprocessing for better OCR
-            preprocessImageForOCR(context, canvas.width, canvas.height);
+            // Skip aggressive preprocessing - use minimal processing only
+            // preprocessImageForOCR(context, canvas.width, canvas.height);
 
             // Run OCR on canvas with high quality settings
             const { data: { text } } = await worker.recognize(canvas, {
