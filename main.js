@@ -247,16 +247,24 @@ processBtn.addEventListener('click', async () => {
                 // No embedded text - perform OCR
                 progressFill.style.width = '50%';
                 progressFill.textContent = '50%';
-                progressText.textContent = 'No embedded text found - performing OCR...';
+                progressText.textContent = 'Embedded text is garbled - performing OCR...';
 
                 extractedText = await extractTextFromPdf(currentPdf);
 
-                // Compare OCR with embedded text (if any)
+                // Don't compare with garbled embedded text - just report OCR results
                 progressFill.style.width = '100%';
                 progressFill.textContent = '100%';
-                progressText.textContent = 'Comparing results...';
+                progressText.textContent = 'OCR complete';
 
-                comparisonResult = compareTexts(extractedText, embeddedText);
+                comparisonResult = {
+                    hasEmbeddedText: false,
+                    similarity: 100, // OCR is the only source, so it's 100% of what we have
+                    criticalErrors: [],
+                    structuralDifferences: [],
+                    textAccuracyIssues: [],
+                    semanticIntegrity: 'Text extracted via OCR (embedded text was unreadable)',
+                    overallAssessment: 'OCR extraction complete - embedded text was garbled/unreadable'
+                };
             }
 
             // Display results
@@ -411,8 +419,8 @@ async function extractTextFromPdf(pdf) {
                 intent: 'print' // Use print-quality rendering
             }).promise;
 
-            // Apply light preprocessing
-            lightPreprocessing(context, canvas.width, canvas.height);
+            // No preprocessing - use raw PDF rendering
+            // lightPreprocessing(context, canvas.width, canvas.height);
 
             // Run OCR on canvas with high quality settings
             const { data: { text } } = await worker.recognize(canvas, {
