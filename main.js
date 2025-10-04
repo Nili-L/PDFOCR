@@ -385,9 +385,9 @@ async function extractTextFromPdf(pdf) {
         logger: () => {} // Suppress verbose logging
     });
 
-    // Configure Tesseract with moderate settings
+    // Configure Tesseract to preserve line breaks and structure
     await worker.setParameters({
-        tessedit_pageseg_mode: '1', // Automatic page segmentation with OSD
+        tessedit_pageseg_mode: '4', // Single column of variable-sized text - preserves paragraphs
         tessedit_ocr_engine_mode: '1', // Use LSTM + legacy (best accuracy)
         preserve_interword_spaces: '1',
     });
@@ -423,11 +423,29 @@ async function extractTextFromPdf(pdf) {
             // lightPreprocessing(context, canvas.width, canvas.height);
 
             // Run OCR on canvas with high quality settings
-            const { data: { text } } = await worker.recognize(canvas, {
+            const { data } = await worker.recognize(canvas, {
                 rotateAuto: true,
             });
 
-            fullText += `\n--- Page ${i} ---\n${text}\n`;
+            // Reconstruct text while preserving line breaks
+            let pageText = '';
+            if (data.lines && data.lines.length > 0) {
+                // Use line-by-line structure to preserve formatting
+                data.lines.forEach((line, index) => {
+                    const lineText = line.text.trim();
+                    if (lineText) {
+                        pageText += lineText + '\n';
+                    } else {
+                        // Preserve empty lines for paragraph spacing
+                        pageText += '\n';
+                    }
+                });
+            } else {
+                // Fallback to plain text if line data not available
+                pageText = data.text;
+            }
+
+            fullText += `\n--- Page ${i} ---\n${pageText}\n`;
         }
 
         await worker.terminate();
