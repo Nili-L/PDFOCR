@@ -1,22 +1,25 @@
-# PDF OCR Web Application
+# Document Text Extractor
 
-A client-side web application that performs OCR (Optical Character Recognition) on PDF files using Tesseract.js and PDF.js. All processing happens in the browser - no server required!
+A client-side web application that extracts text from PDF and DOCX files using Tesseract.js, PDF.js, and Mammoth.js. All processing happens in the browser - no server required!
 
 ## Features
 
-- 📤 **Drag & drop or click to upload** PDF files
-- 🔍 **Client-side OCR processing** - completely private, no data sent to servers
+- 📤 **Drag & drop or click to upload** PDF and DOCX files
+- 🔍 **Client-side processing** - completely private, no data sent to servers
 - 📊 **Live progress tracking** with visual progress bar
-- 👁️ **PDF preview** - see thumbnail previews of your pages
+- 👁️ **PDF preview** - see thumbnail previews of your PDF pages
+- ✅ **Integrity verification** - compare OCR results with embedded text for PDFs
 - 📋 **Copy to clipboard** - easily copy extracted text
-- 💾 **Download as TXT** - save extracted text as a text file
+- 💾 **Download as TXT** - save extracted text with verification report
 - 📈 **Statistics** - character count, word count, page count
+- 🌐 **Multi-language support** - Hebrew and English OCR for PDFs
 - 🎨 **Beautiful UI** - modern, responsive design
 
 ## Technologies Used
 
-- **Tesseract.js** - JavaScript OCR engine
+- **Tesseract.js** - JavaScript OCR engine for PDFs
 - **PDF.js** - Mozilla's PDF rendering library
+- **Mammoth.js** - DOCX text extraction library
 - **Vite** - Fast build tool and dev server
 
 ## Setup Instructions
@@ -54,17 +57,18 @@ The built files will be in the `dist` directory. You can serve them with any sta
 
 ## How to Use
 
-1. **Upload a PDF**: Click the upload area or drag and drop a PDF file (max 500MB)
-2. **Preview**: View thumbnail previews of your PDF pages
+1. **Upload a Document**: Click the upload area or drag and drop a PDF or DOCX file (max 500MB)
+2. **Preview**: View thumbnail previews of your PDF pages (DOCX files display file info only)
 3. **Process**: Click "Start OCR Processing" to extract text
-4. **View Results**: See extracted text with statistics
-5. **Export**: Copy to clipboard or download as TXT file
+4. **View Results**: See extracted text with statistics and verification report
+5. **Export**: Copy to clipboard or download as TXT file with verification data
 
 ## Performance Notes
 
-- **Processing time**: Depends on PDF size and complexity (typically 2-5 seconds per page)
-- **File size limit**: 500MB maximum
-- **Languages**: Currently supports English (can be extended to other languages)
+- **PDF Processing time**: Depends on size and complexity (typically 2-5 seconds per page with OCR)
+- **DOCX Processing time**: Near-instant text extraction (no OCR needed)
+- **File size limit**: 500MB maximum for both PDF and DOCX
+- **Languages**: Hebrew and English OCR support for PDFs
 - **Browser compatibility**: Works on modern browsers (Chrome, Firefox, Safari, Edge)
 
 ## OCR Accuracy Tips
@@ -121,8 +125,8 @@ pdf-ocr-app/
 ### Issue: Low accuracy
 - **Solution**: Increase the viewport scale in `main.js` (line 137) from 2.0 to 3.0 or higher.
 
-### Issue: Can't upload PDF
-- **Solution**: Ensure file is under 500MB and is a valid PDF format.
+### Issue: Can't upload file
+- **Solution**: Ensure file is under 500MB and is a valid PDF or DOCX format.
 
 ## Privacy & Security
 

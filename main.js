@@ -1,5 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { createWorker } from 'tesseract.js';
+import mammoth from 'mammoth';
 
 // Configure PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
@@ -29,6 +30,7 @@ const downloadBtn = document.getElementById('downloadBtn');
 // State
 let currentFile = null;
 let currentPdf = null;
+let currentFileType = null; // 'pdf' or 'docx'
 let extractedText = '';
 let embeddedText = '';
 let comparisonResult = null;
@@ -50,10 +52,14 @@ uploadArea.addEventListener('drop', (e) => {
     uploadArea.classList.remove('dragover');
 
     const files = e.dataTransfer.files;
-    if (files.length > 0 && files[0].type === 'application/pdf') {
-        handleFileSelect(files[0]);
-    } else {
-        alert('Please upload a valid PDF file');
+    if (files.length > 0) {
+        const file = files[0];
+        const validTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        if (validTypes.includes(file.type)) {
+            handleFileSelect(file);
+        } else {
+            alert('Please upload a valid PDF or DOCX file');
+        }
     }
 });
 
@@ -71,10 +77,21 @@ async function handleFileSelect(file) {
         return;
     }
 
+    // Determine file type
+    if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+        currentFileType = 'pdf';
+    } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx')) {
+        currentFileType = 'docx';
+    } else {
+        alert('Please upload a valid PDF or DOCX file');
+        return;
+    }
+
     currentFile = file;
 
     // Display file info
-    fileName.textContent = `📄 ${file.name}`;
+    const icon = currentFileType === 'pdf' ? '📄' : '📝';
+    fileName.textContent = `${icon} ${file.name}`;
     fileSize.textContent = `Size: ${formatFileSize(file.size)}`;
     fileInfo.classList.add('active');
 
@@ -82,8 +99,13 @@ async function handleFileSelect(file) {
     processBtn.disabled = false;
     clearBtn.disabled = false;
 
-    // Load and preview PDF
-    await loadPdfPreview(file);
+    // Load and preview based on file type
+    if (currentFileType === 'pdf') {
+        await loadPdfPreview(file);
+    } else {
+        // Hide preview for DOCX files
+        previewContainer.style.display = 'none';
+    }
 }
 
 // Load PDF Preview
@@ -144,46 +166,86 @@ async function loadPdfPreview(file) {
     }
 }
 
-// Process PDF with OCR
+// Process Document (PDF or DOCX)
 processBtn.addEventListener('click', async () => {
-    if (!currentPdf) return;
+    if (!currentFile) return;
 
     processBtn.disabled = true;
     clearBtn.disabled = true;
     progressContainer.classList.add('active');
 
     try {
-        // First, extract embedded text for comparison
-        progressFill.style.width = '25%';
-        progressFill.textContent = '25%';
-        progressText.textContent = 'Extracting embedded text...';
+        if (currentFileType === 'docx') {
+            // Process DOCX file
+            progressFill.style.width = '50%';
+            progressFill.textContent = '50%';
+            progressText.textContent = 'Extracting text from DOCX...';
 
-        embeddedText = await extractEmbeddedText(currentPdf);
+            extractedText = await extractTextFromDocx(currentFile);
+            embeddedText = extractedText; // For DOCX, embedded text is the extracted text
 
-        // Then perform OCR
-        progressFill.style.width = '50%';
-        progressFill.textContent = '50%';
-        progressText.textContent = 'Starting OCR processing...';
+            progressFill.style.width = '100%';
+            progressFill.textContent = '100%';
+            progressText.textContent = 'Complete!';
 
-        extractedText = await extractTextFromPdf(currentPdf);
+            // For DOCX, no OCR comparison needed
+            comparisonResult = {
+                hasEmbeddedText: true,
+                similarity: 100,
+                criticalErrors: [],
+                structuralDifferences: [],
+                textAccuracyIssues: [],
+                semanticIntegrity: 'Direct text extraction from DOCX - no OCR required',
+                overallAssessment: 'Text extracted directly from document (100% accuracy)'
+            };
 
-        // Compare texts for verification
-        progressFill.style.width = '100%';
-        progressFill.textContent = '100%';
-        progressText.textContent = 'Comparing results...';
+            // Display results
+            resultText.textContent = extractedText || 'No text extracted';
 
-        comparisonResult = compareTexts(extractedText, embeddedText);
+            // Update stats
+            const chars = extractedText.length;
+            const words = extractedText.trim().split(/\s+/).filter(w => w.length > 0).length;
 
-        // Display results
-        resultText.textContent = extractedText || 'No text extracted';
+            charCount.textContent = chars.toLocaleString();
+            wordCount.textContent = words.toLocaleString();
+            pageCount.textContent = '-';
 
-        // Update stats
-        const chars = extractedText.length;
-        const words = extractedText.trim().split(/\s+/).filter(w => w.length > 0).length;
+        } else {
+            // Process PDF file
+            if (!currentPdf) return;
 
-        charCount.textContent = chars.toLocaleString();
-        wordCount.textContent = words.toLocaleString();
-        pageCount.textContent = currentPdf.numPages;
+            // First, extract embedded text for comparison
+            progressFill.style.width = '25%';
+            progressFill.textContent = '25%';
+            progressText.textContent = 'Extracting embedded text...';
+
+            embeddedText = await extractEmbeddedText(currentPdf);
+
+            // Then perform OCR
+            progressFill.style.width = '50%';
+            progressFill.textContent = '50%';
+            progressText.textContent = 'Starting OCR processing...';
+
+            extractedText = await extractTextFromPdf(currentPdf);
+
+            // Compare texts for verification
+            progressFill.style.width = '100%';
+            progressFill.textContent = '100%';
+            progressText.textContent = 'Comparing results...';
+
+            comparisonResult = compareTexts(extractedText, embeddedText);
+
+            // Display results
+            resultText.textContent = extractedText || 'No text extracted';
+
+            // Update stats
+            const chars = extractedText.length;
+            const words = extractedText.trim().split(/\s+/).filter(w => w.length > 0).length;
+
+            charCount.textContent = chars.toLocaleString();
+            wordCount.textContent = words.toLocaleString();
+            pageCount.textContent = currentPdf.numPages;
+        }
 
         statsContainer.style.display = 'flex';
         actionButtons.style.display = 'flex';
@@ -201,6 +263,18 @@ processBtn.addEventListener('click', async () => {
         clearBtn.disabled = false;
     }
 });
+
+// Extract text from DOCX
+async function extractTextFromDocx(file) {
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        return result.value;
+    } catch (error) {
+        console.error('Error extracting DOCX text:', error);
+        throw new Error('Failed to extract text from DOCX file');
+    }
+}
 
 // Extract embedded text from PDF
 async function extractEmbeddedText(pdf) {

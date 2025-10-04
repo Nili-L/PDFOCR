@@ -398,24 +398,24 @@
 <body>
     <div class="container">
         <header>
-            <h1>📄 PDF OCR Application</h1>
-            <p class="subtitle">Extract text from scanned PDFs using client-side OCR</p>
+            <h1>📄 Document Text Extractor</h1>
+            <p class="subtitle">Extract text from PDF and DOCX files using client-side processing</p>
         </header>
 
         <div class="main-content">
             <!-- Upload Section -->
             <div class="card">
-                <h2>Upload PDF</h2>
+                <h2>Upload Document</h2>
 
                 <div class="upload-area" id="uploadArea">
                     <div class="upload-icon">📤</div>
                     <p><strong>Click to upload</strong> or drag and drop</p>
                     <p style="font-size: 0.9rem; color: #6c757d; margin-top: 10px;">
-                        Supports PDF files up to 500MB
+                        Supports PDF and DOCX files up to 500MB
                     </p>
                 </div>
 
-                <input type="file" id="fileInput" accept=".pdf" />
+                <input type="file" id="fileInput" accept=".pdf,.docx" />
 
                 <div class="file-info" id="fileInfo">
                     <div class="file-name" id="fileName"></div>

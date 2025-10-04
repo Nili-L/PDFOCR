@@ -12,6 +12,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "mammoth": "^1.6.0",
     "pdfjs-dist": "^3.11.174",
     "tesseract.js": "^5.0.4"
   },
