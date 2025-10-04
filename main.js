@@ -298,15 +298,41 @@ async function extractTextFromDocx(file) {
     }
 }
 
-// Extract embedded text from PDF
+// Extract embedded text from PDF while preserving formatting
 async function extractEmbeddedText(pdf) {
     let fullText = '';
 
     for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
-        const pageText = textContent.items.map(item => item.str).join(' ');
-        fullText += `\n--- Page ${i} ---\n${pageText}\n`;
+
+        // Reconstruct text with proper spacing and line breaks
+        let pageText = '';
+        let lastY = null;
+        let lastX = null;
+
+        textContent.items.forEach((item, index) => {
+            const currentY = item.transform[5]; // Y position
+            const currentX = item.transform[4]; // X position
+
+            if (lastY !== null) {
+                // New line if Y position changed significantly
+                if (Math.abs(currentY - lastY) > 5) {
+                    pageText += '\n';
+                    lastX = null;
+                }
+                // Add space if on same line but with gap
+                else if (lastX !== null && currentX - lastX > item.width) {
+                    pageText += ' ';
+                }
+            }
+
+            pageText += item.str;
+            lastY = currentY;
+            lastX = currentX + item.width;
+        });
+
+        fullText += `\n--- Page ${i} ---\n${pageText.trim()}\n`;
     }
 
     return fullText.trim();
