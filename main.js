@@ -292,8 +292,18 @@ async function extractEmbeddedText(pdf) {
 
 // Extract Text from PDF via OCR
 async function extractTextFromPdf(pdf) {
-    // Support Hebrew and English
-    const worker = await createWorker(['heb', 'eng']);
+    // Support Hebrew and English with optimized settings
+    const worker = await createWorker(['heb', 'eng'], 1, {
+        logger: () => {} // Suppress verbose logging
+    });
+
+    // Configure Tesseract for higher accuracy
+    await worker.setParameters({
+        tessedit_pageseg_mode: '1', // Automatic page segmentation with OSD
+        tessedit_ocr_engine_mode: '2', // Use LSTM neural net mode for better accuracy
+        preserve_interword_spaces: '1',
+    });
+
     let fullText = '';
 
     try {
@@ -305,21 +315,27 @@ async function extractTextFromPdf(pdf) {
             progressText.textContent = `OCR processing page ${i} of ${pdf.numPages}...`;
 
             const page = await pdf.getPage(i);
-            const viewport = page.getViewport({ scale: 2.0 });
+            // Increase scale from 2.0 to 3.0 for higher resolution and better OCR accuracy
+            const viewport = page.getViewport({ scale: 3.0 });
 
-            // Render page to canvas
+            // Render page to canvas with higher quality
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
             canvas.width = viewport.width;
             canvas.height = viewport.height;
 
+            // Use better rendering quality
             await page.render({
                 canvasContext: context,
-                viewport: viewport
+                viewport: viewport,
+                intent: 'print' // Use print-quality rendering
             }).promise;
 
-            // Run OCR on canvas
-            const { data: { text } } = await worker.recognize(canvas);
+            // Run OCR on canvas with high quality settings
+            const { data: { text } } = await worker.recognize(canvas, {
+                rotateAuto: true,
+            });
+
             fullText += `\n--- Page ${i} ---\n${text}\n`;
         }
 
@@ -350,18 +366,27 @@ function compareTexts(ocrText, embeddedText) {
         return result;
     }
 
-    // Normalize texts for comparison
+    // Enhanced normalization for better comparison
     const normalizeText = (text) => text
         .toLowerCase()
-        .replace(/\s+/g, ' ')
-        .replace(/[^\w\s\u0590-\u05FF]/g, '')
+        // Normalize whitespace
+        .replace(/[\r\n]+/g, '\n')
+        .replace(/[ \t]+/g, ' ')
+        // Remove common OCR artifacts
+        .replace(/[`''']/g, "'")
+        .replace(/[""]/g, '"')
+        .replace(/–—/g, '-')
+        // Normalize Unicode characters
+        .normalize('NFKC')
+        // Keep alphanumeric, spaces, Hebrew, and common punctuation
+        .replace(/[^\w\s\u0590-\u05FF.,!?;:()\-'"]/g, '')
         .trim();
 
     const ocrNorm = normalizeText(ocrText);
     const embedNorm = normalizeText(embeddedText);
 
-    // Calculate similarity using Levenshtein-like approach (simple version)
-    const similarity = calculateSimilarity(ocrNorm, embedNorm);
+    // Use character-level similarity for more accurate comparison
+    const similarity = calculateCharacterSimilarity(ocrNorm, embedNorm);
     result.similarity = Math.round(similarity * 100);
 
     // Analyze differences
@@ -393,15 +418,18 @@ function compareTexts(ocrText, embeddedText) {
         }
     }
 
-    // Semantic integrity assessment
-    if (result.similarity >= 95) {
-        result.semanticIntegrity = 'Excellent - OCR text preserves meaning with minimal errors';
+    // Semantic integrity assessment with higher thresholds
+    if (result.similarity >= 99) {
+        result.semanticIntegrity = 'Excellent - Near-perfect OCR accuracy';
+        result.overallAssessment = `Exceptional accuracy (${result.similarity}%) - OCR text is highly reliable`;
+    } else if (result.similarity >= 95) {
+        result.semanticIntegrity = 'Very Good - OCR text preserves meaning with minimal errors';
         result.overallAssessment = `High accuracy (${result.similarity}%) - OCR text is reliable for most purposes`;
-    } else if (result.similarity >= 85) {
+    } else if (result.similarity >= 90) {
         result.semanticIntegrity = 'Good - Minor OCR errors present but overall meaning preserved';
         result.overallAssessment = `Good accuracy (${result.similarity}%) - Review recommended for critical use`;
-    } else if (result.similarity >= 70) {
-        result.semanticIntegrity = 'Fair - Multiple OCR errors may affect meaning in some sections';
+    } else if (result.similarity >= 80) {
+        result.semanticIntegrity = 'Fair - Some OCR errors may affect meaning in certain sections';
         result.overallAssessment = `Moderate accuracy (${result.similarity}%) - Manual review required`;
     } else {
         result.semanticIntegrity = 'Poor - Significant OCR errors likely change meaning';
@@ -411,15 +439,39 @@ function compareTexts(ocrText, embeddedText) {
     return result;
 }
 
-// Simple similarity calculation (Jaccard similarity for speed)
-function calculateSimilarity(str1, str2) {
-    const words1 = new Set(str1.split(' '));
-    const words2 = new Set(str2.split(' '));
+// Character-level similarity using Longest Common Subsequence (LCS)
+function calculateCharacterSimilarity(str1, str2) {
+    if (str1 === str2) return 1.0;
+    if (!str1 || !str2) return 0.0;
 
-    const intersection = new Set([...words1].filter(x => words2.has(x)));
-    const union = new Set([...words1, ...words2]);
+    // Use a ratio of matching characters to total characters
+    const lcsLength = longestCommonSubsequence(str1, str2);
+    const maxLength = Math.max(str1.length, str2.length);
 
-    return intersection.size / union.size;
+    return lcsLength / maxLength;
+}
+
+// Optimized LCS using dynamic programming with space optimization
+function longestCommonSubsequence(str1, str2) {
+    const m = str1.length;
+    const n = str2.length;
+
+    // Use rolling array to save memory
+    let prev = new Array(n + 1).fill(0);
+    let curr = new Array(n + 1).fill(0);
+
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            if (str1[i - 1] === str2[j - 1]) {
+                curr[j] = prev[j - 1] + 1;
+            } else {
+                curr[j] = Math.max(prev[j], curr[j - 1]);
+            }
+        }
+        [prev, curr] = [curr, prev];
+    }
+
+    return prev[n];
 }
 
 // Display verification results in UI
