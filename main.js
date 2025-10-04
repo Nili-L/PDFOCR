@@ -314,6 +314,7 @@ async function extractEmbeddedText(pdf) {
         textContent.items.forEach((item, index) => {
             const currentY = item.transform[5]; // Y position
             const currentX = item.transform[4]; // X position
+            const text = item.str;
 
             if (lastY !== null) {
                 // New line if Y position changed significantly
@@ -321,13 +322,18 @@ async function extractEmbeddedText(pdf) {
                     pageText += '\n';
                     lastX = null;
                 }
-                // Add space if on same line but with gap
-                else if (lastX !== null && currentX - lastX > item.width) {
-                    pageText += ' ';
+                // Add space if on same line but with horizontal gap
+                else if (lastX !== null) {
+                    const gap = currentX - lastX;
+                    // Add space if there's a meaningful gap (more than 1 pixel)
+                    if (gap > 1) {
+                        pageText += ' ';
+                    }
                 }
             }
 
-            pageText += item.str;
+            // Add the text (it may already contain spaces)
+            pageText += text;
             lastY = currentY;
             lastX = currentX + item.width;
         });
