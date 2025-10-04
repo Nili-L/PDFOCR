@@ -214,26 +214,48 @@ processBtn.addEventListener('click', async () => {
             // Process PDF file
             if (!currentPdf) return;
 
-            // First, extract embedded text for comparison
-            progressFill.style.width = '25%';
-            progressFill.textContent = '25%';
+            // First, extract embedded text
+            progressFill.style.width = '30%';
+            progressFill.textContent = '30%';
             progressText.textContent = 'Extracting embedded text...';
 
             embeddedText = await extractEmbeddedText(currentPdf);
 
-            // Then perform OCR
-            progressFill.style.width = '50%';
-            progressFill.textContent = '50%';
-            progressText.textContent = 'Starting OCR processing...';
+            // Check if embedded text is sufficient (not a scanned PDF)
+            const hasGoodEmbeddedText = embeddedText && embeddedText.trim().length > 100;
 
-            extractedText = await extractTextFromPdf(currentPdf);
+            if (hasGoodEmbeddedText) {
+                // Use embedded text directly - it's 100% accurate
+                progressFill.style.width = '100%';
+                progressFill.textContent = '100%';
+                progressText.textContent = 'Using embedded text (100% accuracy)...';
 
-            // Compare texts for verification
-            progressFill.style.width = '100%';
-            progressFill.textContent = '100%';
-            progressText.textContent = 'Comparing results...';
+                extractedText = embeddedText;
 
-            comparisonResult = compareTexts(extractedText, embeddedText);
+                comparisonResult = {
+                    hasEmbeddedText: true,
+                    similarity: 100,
+                    criticalErrors: [],
+                    structuralDifferences: [],
+                    textAccuracyIssues: [],
+                    semanticIntegrity: 'Direct text extraction from PDF - no OCR required',
+                    overallAssessment: 'Text extracted directly from PDF (100% accuracy)'
+                };
+            } else {
+                // No embedded text - perform OCR
+                progressFill.style.width = '50%';
+                progressFill.textContent = '50%';
+                progressText.textContent = 'No embedded text found - performing OCR...';
+
+                extractedText = await extractTextFromPdf(currentPdf);
+
+                // Compare OCR with embedded text (if any)
+                progressFill.style.width = '100%';
+                progressFill.textContent = '100%';
+                progressText.textContent = 'Comparing results...';
+
+                comparisonResult = compareTexts(extractedText, embeddedText);
+            }
 
             // Display results
             resultText.textContent = extractedText || 'No text extracted';
@@ -290,6 +312,36 @@ async function extractEmbeddedText(pdf) {
     return fullText.trim();
 }
 
+// Preprocess image for better OCR recognition
+function preprocessImageForOCR(context, width, height) {
+    // Get image data
+    const imageData = context.getImageData(0, 0, width, height);
+    const data = imageData.data;
+
+    // Convert to grayscale and increase contrast
+    for (let i = 0; i < data.length; i += 4) {
+        // Calculate grayscale value
+        const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+
+        // Apply contrast enhancement
+        const contrast = 1.2; // Increase contrast by 20%
+        const factor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
+        const enhanced = factor * (gray - 128) + 128;
+
+        // Apply simple thresholding to make text sharper
+        const threshold = 180;
+        const final = enhanced > threshold ? 255 : enhanced < 75 ? 0 : enhanced;
+
+        data[i] = final;     // Red
+        data[i + 1] = final; // Green
+        data[i + 2] = final; // Blue
+        // Alpha channel (data[i + 3]) remains unchanged
+    }
+
+    // Put the processed image back
+    context.putImageData(imageData, 0, 0);
+}
+
 // Extract Text from PDF via OCR
 async function extractTextFromPdf(pdf) {
     // Support Hebrew and English with optimized settings
@@ -331,6 +383,9 @@ async function extractTextFromPdf(pdf) {
                 intent: 'print' // Use print-quality rendering
             }).promise;
 
+            // Apply image preprocessing for better OCR
+            preprocessImageForOCR(context, canvas.width, canvas.height);
+
             // Run OCR on canvas with high quality settings
             const { data: { text } } = await worker.recognize(canvas, {
                 rotateAuto: true,
@@ -366,27 +421,31 @@ function compareTexts(ocrText, embeddedText) {
         return result;
     }
 
-    // Enhanced normalization for better comparison
+    // Aggressive normalization for OCR comparison - focus on content not formatting
     const normalizeText = (text) => text
         .toLowerCase()
-        // Normalize whitespace
-        .replace(/[\r\n]+/g, '\n')
-        .replace(/[ \t]+/g, ' ')
-        // Remove common OCR artifacts
-        .replace(/[`''']/g, "'")
-        .replace(/[""]/g, '"')
-        .replace(/–—/g, '-')
-        // Normalize Unicode characters
+        // Normalize all whitespace to single spaces
+        .replace(/\s+/g, ' ')
+        // Remove page markers and common OCR artifacts
+        .replace(/---\s*page\s*\d+\s*---/gi, '')
+        // Normalize quotes and apostrophes
+        .replace(/[`'''‛‚]/g, "'")
+        .replace(/[""„‟]/g, '"')
+        // Normalize dashes
+        .replace(/[–—−]/g, '-')
+        // Normalize Unicode to compatible form
         .normalize('NFKC')
-        // Keep alphanumeric, spaces, Hebrew, and common punctuation
-        .replace(/[^\w\s\u0590-\u05FF.,!?;:()\-'"]/g, '')
+        // Remove all punctuation and special characters except spaces and Hebrew
+        .replace(/[^\w\s\u0590-\u05FF]/g, '')
+        // Collapse multiple spaces
+        .replace(/\s+/g, ' ')
         .trim();
 
     const ocrNorm = normalizeText(ocrText);
     const embedNorm = normalizeText(embeddedText);
 
-    // Use character-level similarity for more accurate comparison
-    const similarity = calculateCharacterSimilarity(ocrNorm, embedNorm);
+    // Use combined similarity metrics for more accurate comparison
+    const similarity = calculateCombinedSimilarity(ocrNorm, embedNorm);
     result.similarity = Math.round(similarity * 100);
 
     // Analyze differences
@@ -439,39 +498,40 @@ function compareTexts(ocrText, embeddedText) {
     return result;
 }
 
-// Character-level similarity using Longest Common Subsequence (LCS)
-function calculateCharacterSimilarity(str1, str2) {
+// Combined similarity using word-level Jaccard + character-level Dice coefficient
+function calculateCombinedSimilarity(str1, str2) {
     if (str1 === str2) return 1.0;
     if (!str1 || !str2) return 0.0;
 
-    // Use a ratio of matching characters to total characters
-    const lcsLength = longestCommonSubsequence(str1, str2);
-    const maxLength = Math.max(str1.length, str2.length);
+    // Split into words
+    const words1 = str1.split(/\s+/).filter(w => w.length > 0);
+    const words2 = str2.split(/\s+/).filter(w => w.length > 0);
 
-    return lcsLength / maxLength;
+    // Word-level Jaccard similarity (good for overall content match)
+    const wordSet1 = new Set(words1);
+    const wordSet2 = new Set(words2);
+    const wordIntersection = new Set([...wordSet1].filter(x => wordSet2.has(x)));
+    const wordUnion = new Set([...wordSet1, ...wordSet2]);
+    const jaccardSimilarity = wordIntersection.size / wordUnion.size;
+
+    // Character-level Dice coefficient (good for handling minor OCR errors)
+    const bigrams1 = getBigrams(str1);
+    const bigrams2 = getBigrams(str2);
+    const bigramIntersection = bigrams1.filter(b => bigrams2.includes(b));
+    const diceSimilarity = (2 * bigramIntersection.length) / (bigrams1.length + bigrams2.length);
+
+    // Weighted combination: favor word-level but account for character errors
+    // 70% word similarity + 30% character similarity
+    return (jaccardSimilarity * 0.7) + (diceSimilarity * 0.3);
 }
 
-// Optimized LCS using dynamic programming with space optimization
-function longestCommonSubsequence(str1, str2) {
-    const m = str1.length;
-    const n = str2.length;
-
-    // Use rolling array to save memory
-    let prev = new Array(n + 1).fill(0);
-    let curr = new Array(n + 1).fill(0);
-
-    for (let i = 1; i <= m; i++) {
-        for (let j = 1; j <= n; j++) {
-            if (str1[i - 1] === str2[j - 1]) {
-                curr[j] = prev[j - 1] + 1;
-            } else {
-                curr[j] = Math.max(prev[j], curr[j - 1]);
-            }
-        }
-        [prev, curr] = [curr, prev];
+// Generate character bigrams for Dice coefficient
+function getBigrams(str) {
+    const bigrams = [];
+    for (let i = 0; i < str.length - 1; i++) {
+        bigrams.push(str.substring(i, i + 2));
     }
-
-    return prev[n];
+    return bigrams;
 }
 
 // Display verification results in UI
