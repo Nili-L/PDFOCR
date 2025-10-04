@@ -221,8 +221,10 @@ processBtn.addEventListener('click', async () => {
 
             embeddedText = await extractEmbeddedText(currentPdf);
 
-            // Check if embedded text is sufficient (not a scanned PDF)
-            const hasGoodEmbeddedText = embeddedText && embeddedText.trim().length > 100;
+            // Check if embedded text is sufficient and valid (not garbled)
+            const hasGoodEmbeddedText = embeddedText &&
+                                       embeddedText.trim().length > 100 &&
+                                       isTextReadable(embeddedText);
 
             if (hasGoodEmbeddedText) {
                 // Use embedded text directly - it's 100% accurate
@@ -296,6 +298,31 @@ async function extractTextFromDocx(file) {
         console.error('Error extracting DOCX text:', error);
         throw new Error('Failed to extract text from DOCX file');
     }
+}
+
+// Check if extracted text is readable (not garbled/gibberish)
+function isTextReadable(text) {
+    // Remove whitespace and common separators
+    const cleanText = text.replace(/[\s\-_]+/g, '');
+
+    // Count Hebrew characters
+    const hebrewChars = (cleanText.match(/[\u0590-\u05FF]/g) || []).length;
+
+    // Count Latin characters
+    const latinChars = (cleanText.match(/[a-zA-Z]/g) || []).length;
+
+    // Count numbers
+    const numbers = (cleanText.match(/[0-9]/g) || []).length;
+
+    // Total recognizable characters
+    const recognizable = hebrewChars + latinChars + numbers;
+
+    // If less than 50% of non-whitespace characters are recognizable, it's likely garbled
+    if (cleanText.length > 0 && recognizable / cleanText.length < 0.5) {
+        return false;
+    }
+
+    return true;
 }
 
 // Extract embedded text from PDF while preserving formatting
