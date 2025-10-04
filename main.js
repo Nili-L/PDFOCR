@@ -386,19 +386,22 @@ function preprocessImageForOCR(context, width, height) {
     const imageData = context.getImageData(0, 0, width, height);
     const data = imageData.data;
 
-    // Convert to grayscale and increase contrast
+    // Convert to grayscale with improved contrast and sharpening
     for (let i = 0; i < data.length; i += 4) {
-        // Calculate grayscale value
+        // Calculate grayscale value using luminosity method
         const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
 
-        // Apply contrast enhancement
-        const contrast = 1.2; // Increase contrast by 20%
+        // Apply stronger contrast enhancement
+        const contrast = 1.5; // Increase contrast by 50%
         const factor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
-        const enhanced = factor * (gray - 128) + 128;
+        let enhanced = factor * (gray - 128) + 128;
 
-        // Apply simple thresholding to make text sharper
-        const threshold = 180;
-        const final = enhanced > threshold ? 255 : enhanced < 75 ? 0 : enhanced;
+        // Clamp values
+        enhanced = Math.max(0, Math.min(255, enhanced));
+
+        // Apply adaptive thresholding for better text separation
+        const threshold = 160;
+        const final = enhanced > threshold ? 255 : enhanced < 60 ? 0 : enhanced;
 
         data[i] = final;     // Red
         data[i + 1] = final; // Green
@@ -419,8 +422,8 @@ async function extractTextFromPdf(pdf) {
 
     // Configure Tesseract for higher accuracy
     await worker.setParameters({
-        tessedit_pageseg_mode: '1', // Automatic page segmentation with OSD
-        tessedit_ocr_engine_mode: '2', // Use LSTM neural net mode for better accuracy
+        tessedit_pageseg_mode: '3', // Fully automatic page segmentation (no OSD)
+        tessedit_ocr_engine_mode: '1', // Use both LSTM + legacy for best accuracy
         preserve_interword_spaces: '1',
     });
 
@@ -435,8 +438,8 @@ async function extractTextFromPdf(pdf) {
             progressText.textContent = `OCR processing page ${i} of ${pdf.numPages}...`;
 
             const page = await pdf.getPage(i);
-            // Increase scale from 2.0 to 3.0 for higher resolution and better OCR accuracy
-            const viewport = page.getViewport({ scale: 3.0 });
+            // Increase scale to 4.0 for maximum resolution and better OCR accuracy
+            const viewport = page.getViewport({ scale: 4.0 });
 
             // Render page to canvas with higher quality
             const canvas = document.createElement('canvas');
