@@ -34,7 +34,6 @@ let currentFileType = null; // 'pdf' or 'docx'
 let extractedText = '';
 let embeddedText = '';
 let comparisonResult = null;
-let extractedMetadata = null;
 
 // Upload Area Events
 uploadArea.addEventListener('click', () => fileInput.click());
@@ -251,14 +250,8 @@ processBtn.addEventListener('click', async () => {
         statsContainer.style.display = 'flex';
         actionButtons.style.display = 'flex';
 
-        // Extract medical metadata
-        extractedMetadata = extractMedicalMetadata(extractedText);
-
         // Display verification results
         displayVerificationResults(comparisonResult);
-
-        // Display metadata
-        displayMetadata(extractedMetadata);
 
     } catch (error) {
         console.error('Error processing PDF:', error);
@@ -429,167 +422,6 @@ function calculateSimilarity(str1, str2) {
     return intersection.size / union.size;
 }
 
-// Extract medical metadata from text
-function extractMedicalMetadata(text) {
-    const metadata = {
-        dates: [],
-        dateTypes: [],
-        providerName: [],
-        institutionName: [],
-        departmentName: [],
-        specialty: [],
-        bodyArea: [],
-        testsPerformed: [],
-        testTypes: [],
-        specificMedications: [],
-        medicationTypes: [],
-        diagnoses: []
-    };
-
-    const lines = text.split('\n');
-    const textLower = text.toLowerCase();
-
-    // Extract dates (various formats)
-    const datePatterns = [
-        /\b(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\b/g,  // MM/DD/YYYY or DD/MM/YYYY
-        /\b(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})\b/g,  // YYYY/MM/DD
-        /\b([A-Z][a-z]+\s+\d{1,2},?\s+\d{4})\b/g,      // Month DD, YYYY
-        /\b(\d{1,2}\s+[A-Z][a-z]+\s+\d{4})\b/g         // DD Month YYYY
-    ];
-
-    datePatterns.forEach(pattern => {
-        const matches = text.match(pattern);
-        if (matches) {
-            metadata.dates.push(...matches.map(d => d.trim()));
-        }
-    });
-
-    // Date types keywords
-    const dateTypeKeywords = {
-        'appointment': ['appointment', 'visit', 'scheduled'],
-        'admission': ['admitted', 'admission'],
-        'discharge': ['discharge', 'released'],
-        'procedure': ['procedure', 'surgery', 'operation'],
-        'test': ['test date', 'exam date', 'screening'],
-        'followup': ['follow-up', 'follow up', 'return visit']
-    };
-
-    Object.entries(dateTypeKeywords).forEach(([type, keywords]) => {
-        keywords.forEach(keyword => {
-            if (textLower.includes(keyword)) {
-                metadata.dateTypes.push(type);
-            }
-        });
-    });
-
-    // Provider names (Dr., MD, DO, NP, PA)
-    const providerPattern = /(Dr\.?\s+[A-Z][a-z]+\s+[A-Z][a-z]+|[A-Z][a-z]+\s+[A-Z][a-z]+,?\s+(MD|DO|NP|PA|RN))/g;
-    const providerMatches = text.match(providerPattern);
-    if (providerMatches) {
-        metadata.providerName.push(...providerMatches.map(p => p.trim()));
-    }
-
-    // Institution names (common patterns)
-    const institutionKeywords = ['hospital', 'medical center', 'clinic', 'health system', 'healthcare', 'institute'];
-    lines.forEach(line => {
-        institutionKeywords.forEach(keyword => {
-            if (line.toLowerCase().includes(keyword) && line.length < 100) {
-                metadata.institutionName.push(line.trim());
-            }
-        });
-    });
-
-    // Departments
-    const departmentKeywords = ['department of', 'dept.', 'division of', 'cardiology', 'neurology', 'oncology',
-                                 'radiology', 'pathology', 'surgery', 'emergency', 'pediatrics', 'orthopedics'];
-    departmentKeywords.forEach(keyword => {
-        const regex = new RegExp(`(${keyword}[\\w\\s]*?)(?=\\n|\\.|,|$)`, 'gi');
-        const matches = text.match(regex);
-        if (matches) {
-            metadata.departmentName.push(...matches.map(d => d.trim()));
-        }
-    });
-
-    // Specialty
-    const specialties = ['cardiology', 'neurology', 'oncology', 'radiology', 'pathology', 'internal medicine',
-                        'family medicine', 'surgery', 'pediatrics', 'psychiatry', 'dermatology', 'orthopedics',
-                        'gastroenterology', 'pulmonology', 'nephrology', 'endocrinology', 'rheumatology'];
-    specialties.forEach(specialty => {
-        if (textLower.includes(specialty)) {
-            metadata.specialty.push(specialty);
-        }
-    });
-
-    // Body areas
-    const bodyAreas = ['head', 'brain', 'neck', 'chest', 'heart', 'lung', 'abdomen', 'stomach', 'liver',
-                       'kidney', 'spine', 'back', 'arm', 'leg', 'hand', 'foot', 'pelvis', 'hip', 'knee',
-                       'shoulder', 'elbow', 'wrist', 'ankle', 'throat', 'skin', 'eye', 'ear'];
-    bodyAreas.forEach(area => {
-        const regex = new RegExp(`\\b${area}s?\\b`, 'i');
-        if (regex.test(text)) {
-            metadata.bodyArea.push(area);
-        }
-    });
-
-    // Tests performed indicators
-    const testIndicators = ['test performed', 'examination', 'imaging', 'laboratory', 'results', 'findings'];
-    testIndicators.forEach(indicator => {
-        if (textLower.includes(indicator)) {
-            metadata.testsPerformed.push(indicator);
-        }
-    });
-
-    // Test types
-    const testTypes = ['x-ray', 'mri', 'ct scan', 'ultrasound', 'blood test', 'urine test', 'biopsy',
-                       'ekg', 'ecg', 'echocardiogram', 'colonoscopy', 'endoscopy', 'mammogram', 'pet scan'];
-    testTypes.forEach(test => {
-        if (textLower.includes(test)) {
-            metadata.testTypes.push(test);
-        }
-    });
-
-    // Specific medications (common patterns)
-    const medicationPattern = /\b([A-Z][a-z]+(?:pril|olol|statin|cillin|mycin|cycline|azole|ine|ide))\b/g;
-    const medMatches = text.match(medicationPattern);
-    if (medMatches) {
-        metadata.specificMedications.push(...medMatches);
-    }
-
-    // Medication types
-    const medicationTypes = {
-        'antibiotic': ['antibiotic', 'penicillin', 'amoxicillin', 'azithromycin'],
-        'painkiller': ['pain', 'analgesic', 'ibuprofen', 'acetaminophen', 'morphine'],
-        'blood pressure': ['blood pressure', 'hypertension', 'lisinopril', 'metoprolol'],
-        'diabetes': ['diabetes', 'insulin', 'metformin', 'glucophage'],
-        'cholesterol': ['cholesterol', 'statin', 'lipitor', 'atorvastatin']
-    };
-
-    Object.entries(medicationTypes).forEach(([type, keywords]) => {
-        keywords.forEach(keyword => {
-            if (textLower.includes(keyword)) {
-                metadata.medicationTypes.push(type);
-            }
-        });
-    });
-
-    // Diagnoses
-    const diagnosisKeywords = ['diagnosis', 'diagnosed with', 'impression', 'assessment'];
-    diagnosisKeywords.forEach(keyword => {
-        const regex = new RegExp(`${keyword}:?\\s*([^\\n\\.]{5,100})`, 'gi');
-        const matches = text.match(regex);
-        if (matches) {
-            metadata.diagnoses.push(...matches.map(d => d.trim()));
-        }
-    });
-
-    // Remove duplicates from all arrays
-    Object.keys(metadata).forEach(key => {
-        metadata[key] = [...new Set(metadata[key])];
-    });
-
-    return metadata;
-}
-
 // Display verification results in UI
 function displayVerificationResults(result) {
     const verificationPanel = document.getElementById('verificationPanel');
@@ -673,56 +505,6 @@ function displayVerificationResults(result) {
     overallAssessment.textContent = result.overallAssessment;
 }
 
-// Display extracted metadata
-function displayMetadata(metadata) {
-    const metadataPanel = document.getElementById('metadataPanel');
-    const metadataContent = document.getElementById('metadataContent');
-
-    if (!metadata) return;
-
-    // Check if there's any metadata to display
-    const hasMetadata = Object.values(metadata).some(arr => arr.length > 0);
-
-    if (!hasMetadata) {
-        metadataPanel.style.display = 'none';
-        return;
-    }
-
-    metadataPanel.classList.add('active');
-
-    const labels = {
-        dates: '📅 Dates',
-        dateTypes: '📆 Date Types',
-        providerName: '👨‍⚕️ Providers',
-        institutionName: '🏥 Institutions',
-        departmentName: '🏢 Departments',
-        specialty: '⚕️ Specialties',
-        bodyArea: '🫀 Body Areas',
-        testsPerformed: '🔬 Tests Performed',
-        testTypes: '🧪 Test Types',
-        specificMedications: '💊 Medications',
-        medicationTypes: '💉 Medication Types',
-        diagnoses: '🩺 Diagnoses'
-    };
-
-    let html = '';
-
-    Object.entries(metadata).forEach(([key, values]) => {
-        if (values.length > 0) {
-            html += `
-                <div style="background: white; padding: 15px; border-radius: 8px; border-left: 3px solid #28a745;">
-                    <h4 style="font-size: 0.9rem; color: #495057; margin-bottom: 10px;">${labels[key]}</h4>
-                    <ul style="list-style: none; padding: 0; margin: 0;">
-                        ${values.map(v => `<li style="padding: 3px 0; font-size: 0.85rem; color: #6c757d;">• ${v}</li>`).join('')}
-                    </ul>
-                </div>
-            `;
-        }
-    });
-
-    metadataContent.innerHTML = html;
-}
-
 // Clear/Reset
 clearBtn.addEventListener('click', () => {
     currentFile = null;
@@ -730,7 +512,6 @@ clearBtn.addEventListener('click', () => {
     extractedText = '';
     embeddedText = '';
     comparisonResult = null;
-    extractedMetadata = null;
 
     fileInput.value = '';
     fileInfo.classList.remove('active');
@@ -744,9 +525,8 @@ clearBtn.addEventListener('click', () => {
     statsContainer.style.display = 'none';
     actionButtons.style.display = 'none';
 
-    // Hide verification and metadata panels
+    // Hide verification panel
     document.getElementById('verificationPanel').classList.remove('active');
-    document.getElementById('metadataPanel').classList.remove('active');
 
     progressFill.style.width = '0%';
     progressFill.textContent = '0%';
@@ -769,47 +549,9 @@ copyBtn.addEventListener('click', async () => {
     }
 });
 
-// Download as TXT with verification report and metadata
+// Download as TXT with verification report
 downloadBtn.addEventListener('click', () => {
     let content = '';
-
-    // Add medical metadata if available
-    if (extractedMetadata) {
-        const hasMetadata = Object.values(extractedMetadata).some(arr => arr.length > 0);
-
-        if (hasMetadata) {
-            content += '=' .repeat(80) + '\n';
-            content += 'EXTRACTED MEDICAL INFORMATION\n';
-            content += '='.repeat(80) + '\n\n';
-
-            const labels = {
-                dates: 'Dates',
-                dateTypes: 'Date Types',
-                providerName: 'Providers',
-                institutionName: 'Institutions',
-                departmentName: 'Departments',
-                specialty: 'Specialties',
-                bodyArea: 'Body Areas',
-                testsPerformed: 'Tests Performed',
-                testTypes: 'Test Types',
-                specificMedications: 'Medications',
-                medicationTypes: 'Medication Types',
-                diagnoses: 'Diagnoses'
-            };
-
-            Object.entries(extractedMetadata).forEach(([key, values]) => {
-                if (values.length > 0) {
-                    content += `${labels[key]}:\n`;
-                    values.forEach(v => {
-                        content += `  - ${v}\n`;
-                    });
-                    content += '\n';
-                }
-            });
-
-            content += '\n';
-        }
-    }
 
     // Add verification report if available
     if (comparisonResult) {
