@@ -366,10 +366,17 @@ async function extractEmbeddedText(pdf) {
         // Reconstruct text line by line
         let pageText = '';
         lines.forEach(line => {
-            // Sort items by X position (left to right)
-            line.sort((a, b) => a.x - b.x);
+            // Check if line contains RTL text
+            const hasRTL = line.some(item => item.dir === 'rtl');
 
-            // Join items with spaces
+            if (hasRTL) {
+                // Sort RIGHT to LEFT for Hebrew/Arabic
+                line.sort((a, b) => b.x - a.x);
+            } else {
+                // Sort LEFT to RIGHT for English
+                line.sort((a, b) => a.x - b.x);
+            }
+
             const lineText = line.map(item => item.text).join(' ');
             pageText += lineText + '\n';
         });
