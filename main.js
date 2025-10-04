@@ -380,107 +380,42 @@ async function extractEmbeddedText(pdf) {
     return fullText.trim();
 }
 
-// Preprocess image for better OCR recognition
-function preprocessImageForOCR(context, width, height) {
-    // Get image data
+// Light preprocessing - minimal enhancement
+function lightPreprocessing(context, width, height) {
     const imageData = context.getImageData(0, 0, width, height);
     const data = imageData.data;
 
-    // First pass: Convert to grayscale and apply contrast
-    const grayscaleData = new Uint8ClampedArray(width * height);
-
+    // Very light contrast enhancement only
     for (let i = 0; i < data.length; i += 4) {
-        // Calculate grayscale value using luminosity method
+        // Calculate grayscale
         const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-        grayscaleData[i / 4] = gray;
-    }
 
-    // Calculate Otsu's threshold for adaptive binarization
-    const threshold = calculateOtsuThreshold(grayscaleData);
-
-    // Second pass: Apply threshold and high contrast
-    for (let i = 0; i < data.length; i += 4) {
-        const gray = grayscaleData[i / 4];
-
-        // Apply very strong contrast before thresholding
-        const contrast = 2.0; // Double the contrast
+        // Very light contrast boost
+        const contrast = 1.1;
         const factor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
         let enhanced = factor * (gray - 128) + 128;
-
-        // Clamp values
         enhanced = Math.max(0, Math.min(255, enhanced));
 
-        // Apply Otsu threshold for sharp black/white separation
-        const final = enhanced > threshold ? 255 : 0;
-
-        data[i] = final;     // Red
-        data[i + 1] = final; // Green
-        data[i + 2] = final; // Blue
-        // Alpha channel (data[i + 3]) remains unchanged
+        data[i] = enhanced;
+        data[i + 1] = enhanced;
+        data[i + 2] = enhanced;
     }
 
-    // Put the processed image back
     context.putImageData(imageData, 0, 0);
-}
-
-// Calculate optimal threshold using Otsu's method
-function calculateOtsuThreshold(grayscaleData) {
-    // Build histogram
-    const histogram = new Array(256).fill(0);
-    for (let i = 0; i < grayscaleData.length; i++) {
-        histogram[Math.floor(grayscaleData[i])]++;
-    }
-
-    // Total number of pixels
-    const total = grayscaleData.length;
-
-    let sum = 0;
-    for (let i = 0; i < 256; i++) {
-        sum += i * histogram[i];
-    }
-
-    let sumB = 0;
-    let wB = 0;
-    let wF = 0;
-    let maxVariance = 0;
-    let threshold = 0;
-
-    for (let i = 0; i < 256; i++) {
-        wB += histogram[i];
-        if (wB === 0) continue;
-
-        wF = total - wB;
-        if (wF === 0) break;
-
-        sumB += i * histogram[i];
-
-        const mB = sumB / wB;
-        const mF = (sum - sumB) / wF;
-
-        const variance = wB * wF * (mB - mF) * (mB - mF);
-
-        if (variance > maxVariance) {
-            maxVariance = variance;
-            threshold = i;
-        }
-    }
-
-    return threshold;
 }
 
 // Extract Text from PDF via OCR
 async function extractTextFromPdf(pdf) {
-    // Focus on Hebrew first, then English as fallback
-    const worker = await createWorker('heb', 1, {
+    // Use both Hebrew and English
+    const worker = await createWorker(['heb', 'eng'], 1, {
         logger: () => {} // Suppress verbose logging
     });
 
-    // Configure Tesseract for higher accuracy with Hebrew focus
+    // Configure Tesseract with moderate settings
     await worker.setParameters({
-        tessedit_pageseg_mode: '6', // Assume a single uniform block of text
-        tessedit_ocr_engine_mode: '2', // Use LSTM neural network only (best for modern text)
+        tessedit_pageseg_mode: '1', // Automatic page segmentation with OSD
+        tessedit_ocr_engine_mode: '1', // Use LSTM + legacy (best accuracy)
         preserve_interword_spaces: '1',
-        tessedit_char_whitelist: '',
     });
 
     let fullText = '';
@@ -494,8 +429,8 @@ async function extractTextFromPdf(pdf) {
             progressText.textContent = `OCR processing page ${i} of ${pdf.numPages}...`;
 
             const page = await pdf.getPage(i);
-            // Increase scale to 6.0 for maximum resolution and better OCR accuracy
-            const viewport = page.getViewport({ scale: 6.0 });
+            // Use moderate scale of 3.0 - balance between quality and performance
+            const viewport = page.getViewport({ scale: 3.0 });
 
             // Render page to canvas with higher quality
             const canvas = document.createElement('canvas');
@@ -510,8 +445,8 @@ async function extractTextFromPdf(pdf) {
                 intent: 'print' // Use print-quality rendering
             }).promise;
 
-            // Skip aggressive preprocessing - use minimal processing only
-            // preprocessImageForOCR(context, canvas.width, canvas.height);
+            // Apply light preprocessing
+            lightPreprocessing(context, canvas.width, canvas.height);
 
             // Run OCR on canvas with high quality settings
             const { data: { text } } = await worker.recognize(canvas, {
