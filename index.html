@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF OCR Web Application</title>
+    <title>PDFOCR — Document Text Extractor</title>
+    <meta name="description" content="Client-side document text extractor. Drag-and-drop PDF and DOCX files — all processing happens in the browser, no server required.">
+    <meta property="og:title" content="PDFOCR — Document Text Extractor">
+    <meta property="og:description" content="Extract text from PDF and DOCX files entirely in the browser. Hebrew and English OCR, no data sent to external servers.">
     <style>
         * {
             margin: 0;
@@ -398,7 +401,7 @@
 <body>
     <div class="container">
         <header>
-            <h1>📄 Document Text Extractor</h1>
+            <h1>Document Text Extractor</h1>
             <p class="subtitle">Extract text from PDF and DOCX files using client-side processing</p>
         </header>
 
@@ -407,11 +410,11 @@
             <div class="card">
                 <h2>Upload Document</h2>
 
-                <div class="upload-area" id="uploadArea">
-                    <div class="upload-icon">📤</div>
+                <div class="upload-area" id="uploadArea" role="button" tabindex="0" aria-label="Upload a PDF or DOCX file">
+                    <div class="upload-icon" aria-hidden="true">&#x2191;</div>
                     <p><strong>Click to upload</strong> or drag and drop</p>
                     <p style="font-size: 0.9rem; color: #6c757d; margin-top: 10px;">
-                        Supports PDF and DOCX files up to 500MB
+                        Supports PDF and DOCX files up to 25MB
                     </p>
                 </div>
 
@@ -468,8 +471,8 @@
                 </div>
 
                 <div class="action-buttons" id="actionButtons" style="display: none;">
-                    <button id="copyBtn" class="btn-success">📋 Copy Text</button>
-                    <button id="downloadBtn" class="btn-secondary">💾 Download as TXT</button>
+                    <button id="copyBtn" class="btn-success">Copy Text</button>
+                    <button id="downloadBtn" class="btn-secondary">Download as TXT</button>
                 </div>
 
                 <div class="verification-panel" id="verificationPanel">
@@ -506,7 +509,7 @@
                     </div>
 
                     <div class="verification-section">
-                        <h4>📋 Overall Assessment</h4>
+                        <h4>Overall Assessment</h4>
                         <p style="margin: 0; font-size: 0.9rem; color: #495057; font-weight: 500;" id="overallAssessment"></p>
                     </div>
                 </div>

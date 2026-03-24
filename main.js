@@ -2,8 +2,9 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { createWorker } from 'tesseract.js';
 import mammoth from 'mammoth';
 
-// Configure PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
+// Configure PDF.js worker — bundled locally, no external CDN
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 // DOM Elements
 const uploadArea = document.getElementById('uploadArea');
@@ -27,24 +28,64 @@ const actionButtons = document.getElementById('actionButtons');
 const copyBtn = document.getElementById('copyBtn');
 const downloadBtn = document.getElementById('downloadBtn');
 
+// Config
+const CONFIG = {
+    MAX_PREVIEW_PAGES: 5,
+    PDF_RENDER_SCALE: 3.0,
+    MAX_FILE_SIZE_MB: 25,
+    SIMILARITY_THRESHOLDS: { EXCELLENT: 95, GOOD: 85, FAIR: 70 }
+};
+
+function updateProgress(percentage, message) {
+    progressFill.style.width = `${percentage}%`;
+    progressFill.textContent = `${percentage}%`;
+    progressText.textContent = message;
+}
+
+function updateStatistics(text, pages) {
+    const chars = text.length;
+    const words = text.trim().split(/\s+/).filter(w => w.length > 0).length;
+    charCount.textContent = chars.toLocaleString();
+    wordCount.textContent = words.toLocaleString();
+    pageCount.textContent = pages || '-';
+}
+
+function createComparisonResult(hasEmbeddedText, similarity, message) {
+    return {
+        hasEmbeddedText,
+        similarity,
+        criticalErrors: [],
+        structuralDifferences: [],
+        textAccuracyIssues: [],
+        semanticIntegrity: message,
+        overallAssessment: message
+    };
+}
+
 // State
 let currentFile = null;
 let currentPdf = null;
 let currentFileType = null; // 'pdf' or 'docx'
+let currentFileUrl = null;
 let extractedText = '';
 let embeddedText = '';
 let comparisonResult = null;
 
 // Upload Area Events
 uploadArea.addEventListener('click', () => fileInput.click());
+uploadArea.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+});
 
 uploadArea.addEventListener('dragover', (e) => {
     e.preventDefault();
     uploadArea.classList.add('dragover');
 });
 
-uploadArea.addEventListener('dragleave', () => {
-    uploadArea.classList.remove('dragover');
+uploadArea.addEventListener('dragleave', (e) => {
+    if (!uploadArea.contains(e.relatedTarget)) {
+        uploadArea.classList.remove('dragover');
+    }
 });
 
 uploadArea.addEventListener('drop', (e) => {
@@ -72,7 +113,7 @@ fileInput.addEventListener('change', (e) => {
 // Handle File Selection
 async function handleFileSelect(file) {
     // Check file size (500MB limit)
-    if (file.size > 500 * 1024 * 1024) {
+    if (file.size > CONFIG.MAX_FILE_SIZE_MB * 1024 * 1024) {
         alert('File size exceeds 500MB limit');
         return;
     }
@@ -90,8 +131,7 @@ async function handleFileSelect(file) {
     currentFile = file;
 
     // Display file info
-    const icon = currentFileType === 'pdf' ? '📄' : '📝';
-    fileName.textContent = `${icon} ${file.name}`;
+    fileName.textContent = file.name;
     fileSize.textContent = `Size: ${formatFileSize(file.size)}`;
     fileInfo.classList.add('active');
 
@@ -111,15 +151,16 @@ async function handleFileSelect(file) {
 // Load PDF Preview
 async function loadPdfPreview(file) {
     try {
-        const fileUrl = URL.createObjectURL(file);
-        const loadingTask = pdfjsLib.getDocument(fileUrl);
+        if (currentFileUrl) URL.revokeObjectURL(currentFileUrl);
+        currentFileUrl = URL.createObjectURL(file);
+        const loadingTask = pdfjsLib.getDocument(currentFileUrl);
         currentPdf = await loadingTask.promise;
 
         // Clear previous preview
         pdfPreview.innerHTML = '';
 
         // Show only first 5 pages for preview
-        const numPages = Math.min(currentPdf.numPages, 5);
+        const numPages = Math.min(currentPdf.numPages, CONFIG.MAX_PREVIEW_PAGES);
 
         for (let i = 1; i <= numPages; i++) {
             const page = await currentPdf.getPage(i);
@@ -147,14 +188,14 @@ async function loadPdfPreview(file) {
             pdfPreview.appendChild(pageDiv);
         }
 
-        if (currentPdf.numPages > 5) {
+        if (currentPdf.numPages > CONFIG.MAX_PREVIEW_PAGES) {
             const moreDiv = document.createElement('div');
             moreDiv.className = 'pdf-page';
             moreDiv.style.display = 'flex';
             moreDiv.style.alignItems = 'center';
             moreDiv.style.justifyContent = 'center';
             moreDiv.style.background = '#e9ecef';
-            moreDiv.innerHTML = `<p style="text-align: center; color: #6c757d;">+${currentPdf.numPages - 5} more pages</p>`;
+            moreDiv.innerHTML = `<p style="text-align: center; color: #6c757d;">+${currentPdf.numPages - CONFIG.MAX_PREVIEW_PAGES} more pages</p>`;
             pdfPreview.appendChild(moreDiv);
         }
 
@@ -177,47 +218,27 @@ processBtn.addEventListener('click', async () => {
     try {
         if (currentFileType === 'docx') {
             // Process DOCX file
-            progressFill.style.width = '50%';
-            progressFill.textContent = '50%';
-            progressText.textContent = 'Extracting text from DOCX...';
+            updateProgress(50, 'Extracting text from DOCX...');
 
             extractedText = await extractTextFromDocx(currentFile);
             embeddedText = extractedText; // For DOCX, embedded text is the extracted text
 
-            progressFill.style.width = '100%';
-            progressFill.textContent = '100%';
-            progressText.textContent = 'Complete!';
+            updateProgress(100, 'Complete!');
 
-            // For DOCX, no OCR comparison needed
-            comparisonResult = {
-                hasEmbeddedText: true,
-                similarity: 100,
-                criticalErrors: [],
-                structuralDifferences: [],
-                textAccuracyIssues: [],
-                semanticIntegrity: 'Direct text extraction from DOCX - no OCR required',
-                overallAssessment: 'Text extracted directly from document (100% accuracy)'
-            };
+            comparisonResult = createComparisonResult(
+                true, 100, 'Text extracted directly from document (100% accuracy)'
+            );
 
             // Display results
             resultText.textContent = extractedText || 'No text extracted';
 
-            // Update stats
-            const chars = extractedText.length;
-            const words = extractedText.trim().split(/\s+/).filter(w => w.length > 0).length;
-
-            charCount.textContent = chars.toLocaleString();
-            wordCount.textContent = words.toLocaleString();
-            pageCount.textContent = '-';
+            updateStatistics(extractedText);
 
         } else {
             // Process PDF file
-            if (!currentPdf) return;
+            if (!currentPdf) throw new Error('PDF failed to load. Please try re-uploading the file.');
 
-            // First, extract embedded text
-            progressFill.style.width = '30%';
-            progressFill.textContent = '30%';
-            progressText.textContent = 'Extracting embedded text...';
+            updateProgress(30, 'Extracting embedded text...');
 
             embeddedText = await extractEmbeddedText(currentPdf);
 
@@ -227,56 +248,27 @@ processBtn.addEventListener('click', async () => {
                                        isTextReadable(embeddedText);
 
             if (hasGoodEmbeddedText) {
-                // Use embedded text directly - it's 100% accurate
-                progressFill.style.width = '100%';
-                progressFill.textContent = '100%';
-                progressText.textContent = 'Using embedded text (100% accuracy)...';
-
+                updateProgress(100, 'Using embedded text (100% accuracy)...');
                 extractedText = embeddedText;
 
-                comparisonResult = {
-                    hasEmbeddedText: true,
-                    similarity: 100,
-                    criticalErrors: [],
-                    structuralDifferences: [],
-                    textAccuracyIssues: [],
-                    semanticIntegrity: 'Direct text extraction from PDF - no OCR required',
-                    overallAssessment: 'Text extracted directly from PDF (100% accuracy)'
-                };
+                comparisonResult = createComparisonResult(
+                    true, 100, 'Text extracted directly from PDF (100% accuracy)'
+                );
             } else {
-                // No embedded text - perform OCR
-                progressFill.style.width = '50%';
-                progressFill.textContent = '50%';
-                progressText.textContent = 'Embedded text is garbled - performing OCR...';
-
+                updateProgress(50, 'Embedded text is garbled - performing OCR...');
                 extractedText = await extractTextFromPdf(currentPdf);
 
-                // Don't compare with garbled embedded text - just report OCR results
-                progressFill.style.width = '100%';
-                progressFill.textContent = '100%';
-                progressText.textContent = 'OCR complete';
+                updateProgress(100, 'OCR complete');
 
-                comparisonResult = {
-                    hasEmbeddedText: false,
-                    similarity: 100, // OCR is the only source, so it's 100% of what we have
-                    criticalErrors: [],
-                    structuralDifferences: [],
-                    textAccuracyIssues: [],
-                    semanticIntegrity: 'Text extracted via OCR (embedded text was unreadable)',
-                    overallAssessment: 'OCR extraction complete - embedded text was garbled/unreadable'
-                };
+                comparisonResult = createComparisonResult(
+                    false, 100, 'OCR extraction complete - embedded text was garbled/unreadable'
+                );
             }
 
             // Display results
             resultText.textContent = extractedText || 'No text extracted';
 
-            // Update stats
-            const chars = extractedText.length;
-            const words = extractedText.trim().split(/\s+/).filter(w => w.length > 0).length;
-
-            charCount.textContent = chars.toLocaleString();
-            wordCount.textContent = words.toLocaleString();
-            pageCount.textContent = currentPdf.numPages;
+            updateStatistics(extractedText, currentPdf.numPages);
         }
 
         statsContainer.style.display = 'flex';
@@ -404,7 +396,7 @@ async function extractTextFromPdf(pdf) {
 
             const page = await pdf.getPage(i);
             // Use moderate scale of 3.0 - balance between quality and performance
-            const viewport = page.getViewport({ scale: 3.0 });
+            const viewport = page.getViewport({ scale: CONFIG.PDF_RENDER_SCALE });
 
             // Render page to canvas with higher quality
             const canvas = document.createElement('canvas');
@@ -554,8 +546,14 @@ function calculateCombinedSimilarity(str1, str2) {
     // Character-level Dice coefficient (good for handling minor OCR errors)
     const bigrams1 = getBigrams(str1);
     const bigrams2 = getBigrams(str2);
-    const bigramIntersection = bigrams1.filter(b => bigrams2.includes(b));
-    const diceSimilarity = (2 * bigramIntersection.length) / (bigrams1.length + bigrams2.length);
+    const bigramMap = new Map();
+    for (const b of bigrams2) bigramMap.set(b, (bigramMap.get(b) ?? 0) + 1);
+    let intersectionCount = 0;
+    for (const b of bigrams1) {
+        const count = bigramMap.get(b) ?? 0;
+        if (count > 0) { intersectionCount++; bigramMap.set(b, count - 1); }
+    }
+    const diceSimilarity = (2 * intersectionCount) / (bigrams1.length + bigrams2.length);
 
     // Weighted combination: favor word-level but account for character errors
     // 70% word similarity + 30% character similarity
@@ -625,29 +623,18 @@ function displayVerificationResults(result) {
         similarityFill.style.background = 'linear-gradient(90deg, #28a745, #20c997)';
     }
 
-    // Critical errors
-    if (result.criticalErrors && result.criticalErrors.length > 0) {
-        criticalErrorsSection.style.display = 'block';
-        criticalErrorsList.innerHTML = result.criticalErrors.map(error => `<li>${error}</li>`).join('');
-    } else {
-        criticalErrorsSection.style.display = 'none';
+    function populateList(section, list, items) {
+        if (items && items.length > 0) {
+            section.style.display = 'block';
+            list.replaceChildren(...items.map(text => Object.assign(document.createElement('li'), { textContent: text })));
+        } else {
+            section.style.display = 'none';
+        }
     }
 
-    // Structural differences
-    if (result.structuralDifferences && result.structuralDifferences.length > 0) {
-        structuralDifferencesSection.style.display = 'block';
-        structuralDifferencesList.innerHTML = result.structuralDifferences.map(diff => `<li>${diff}</li>`).join('');
-    } else {
-        structuralDifferencesSection.style.display = 'none';
-    }
-
-    // Text accuracy issues
-    if (result.textAccuracyIssues && result.textAccuracyIssues.length > 0) {
-        textAccuracySection.style.display = 'block';
-        textAccuracyList.innerHTML = result.textAccuracyIssues.map(issue => `<li>${issue}</li>`).join('');
-    } else {
-        textAccuracySection.style.display = 'none';
-    }
+    populateList(criticalErrorsSection, criticalErrorsList, result.criticalErrors);
+    populateList(structuralDifferencesSection, structuralDifferencesList, result.structuralDifferences);
+    populateList(textAccuracySection, textAccuracyList, result.textAccuracyIssues);
 
     // Semantic integrity and overall assessment
     semanticIntegrity.textContent = result.semanticIntegrity;
@@ -658,6 +645,8 @@ function displayVerificationResults(result) {
 clearBtn.addEventListener('click', () => {
     currentFile = null;
     currentPdf = null;
+    currentFileType = null;
+    if (currentFileUrl) { URL.revokeObjectURL(currentFileUrl); currentFileUrl = null; }
     extractedText = '';
     embeddedText = '';
     comparisonResult = null;
@@ -688,7 +677,7 @@ copyBtn.addEventListener('click', async () => {
         await navigator.clipboard.writeText(extractedText);
 
         const originalText = copyBtn.textContent;
-        copyBtn.textContent = '✅ Copied!';
+        copyBtn.textContent = 'Copied!';
 
         setTimeout(() => {
             copyBtn.textContent = originalText;
@@ -752,7 +741,7 @@ downloadBtn.addEventListener('click', () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${currentFile.name.replace('.pdf', '')}_ocr_verified.txt`;
+    a.download = `${currentFile.name.replace(/\.(pdf|docx)$/i, '')}_extracted.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
