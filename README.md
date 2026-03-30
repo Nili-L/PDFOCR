@@ -1,144 +1,101 @@
-# Document Text Extractor
+# PDFOCR
 
-A client-side web application that extracts text from PDF and DOCX files using Tesseract.js, PDF.js, and Mammoth.js. All processing happens in the browser - no server required!
+A client-side web app that extracts text from PDF and DOCX files. Everything runs in the browser — no server, no uploads, no data leaves your machine.
 
-## Features
+**Live:** [nili-l.github.io/PDFOCR](https://nili-l.github.io/PDFOCR/)
 
-- 📤 **Drag & drop or click to upload** PDF and DOCX files
-- 🔍 **Client-side processing** - completely private, no data sent to servers
-- 📊 **Live progress tracking** with visual progress bar
-- 👁️ **PDF preview** - see thumbnail previews of your PDF pages
-- ✅ **Integrity verification** - compare OCR results with embedded text for PDFs
-- 📋 **Copy to clipboard** - easily copy extracted text
-- 💾 **Download as TXT** - save extracted text with verification report
-- 📈 **Statistics** - character count, word count, page count
-- 🌐 **Multi-language support** - Hebrew and English OCR for PDFs
-- 🎨 **Beautiful UI** - modern, responsive design
+## How it works
 
-## Technologies Used
+1. Drop a PDF or DOCX file onto the page (or click to browse)
+2. Click "Start OCR Processing"
+3. Copy the extracted text or download it as a `.txt` file
 
-- **Tesseract.js** - JavaScript OCR engine for PDFs
-- **PDF.js** - Mozilla's PDF rendering library
-- **Mammoth.js** - DOCX text extraction library
-- **Vite** - Fast build tool and dev server
+For PDFs, the app first tries to extract embedded text directly. If that text is garbled or missing (common with scanned documents), it falls back to OCR via Tesseract.js. DOCX files are extracted directly — no OCR needed.
 
-## Setup Instructions
+## What you get
 
-### Prerequisites
+- **Extracted text** with character count, word count, and page count
+- **Integrity verification** — when a PDF has embedded text, the app scores the extraction quality and flags accuracy issues
+- **Verification report** included in the downloaded `.txt` file
+- **PDF preview** — thumbnail previews of the first 5 pages before processing
 
-- Node.js 16+ and npm installed
+## Privacy
 
-### Installation
+All processing happens in your browser using Web Workers. No file data is sent anywhere. Safe for sensitive documents.
 
-1. Navigate to the project directory:
+## Supported formats
+
+| Format | Method | Languages |
+|--------|--------|-----------|
+| PDF (with embedded text) | Direct extraction via PDF.js | Any |
+| PDF (scanned/image-only) | OCR via Tesseract.js | Hebrew, English |
+| DOCX | Direct extraction via Mammoth.js | Any |
+
+No hard file size limit — the browser's available memory is the constraint. Files up to 500MB+ work well on most machines. The app processes pages one at a time and stores results incrementally, so memory usage stays flat regardless of document length.
+
+> **Note:** The app decides whether embedded PDF text is "garbled" by checking if 50%+ of characters are Hebrew, Latin, or numeric. PDFs in other scripts (Arabic, CJK, etc.) may trigger OCR unnecessarily even when embedded text is fine.
+
+> **Large files:** Results are stored in your browser's IndexedDB as each page completes. If the tab crashes mid-extraction, reopen the app to download whatever was saved.
+
+## Run locally
+
+Requires Node.js 16+ and npm.
+
 ```bash
-cd pdf-ocr-app
-```
-
-2. Install dependencies:
-```bash
+git clone https://github.com/Nili-L/PDFOCR.git
+cd PDFOCR
 npm install
-```
-
-3. Start the development server:
-```bash
 npm run dev
 ```
 
-4. Open your browser and go to `http://localhost:5173`
+Opens at `http://localhost:5173`.
 
-### Build for Production
+### Build for production
 
 ```bash
 npm run build
 ```
 
-The built files will be in the `dist` directory. You can serve them with any static file server.
+Static files go to `dist/`. Serve them with any static file server, or push to main and GitHub Pages deploys automatically.
 
-## How to Use
+## OCR tips
 
-1. **Upload a Document**: Click the upload area or drag and drop a PDF or DOCX file (max 500MB)
-2. **Preview**: View thumbnail previews of your PDF pages (DOCX files display file info only)
-3. **Process**: Click "Start OCR Processing" to extract text
-4. **View Results**: See extracted text with statistics and verification report
-5. **Export**: Copy to clipboard or download as TXT file with verification data
-
-## Performance Notes
-
-- **PDF Processing time**: Depends on size and complexity (typically 2-5 seconds per page with OCR)
-- **DOCX Processing time**: Near-instant text extraction (no OCR needed)
-- **File size limit**: 500MB maximum for both PDF and DOCX
-- **Languages**: Hebrew and English OCR support for PDFs
-- **Browser compatibility**: Works on modern browsers (Chrome, Firefox, Safari, Edge)
-
-## OCR Accuracy Tips
-
-For best OCR results:
-- Use high-quality scanned PDFs
-- Ensure text is clear and legible
-- Avoid heavily skewed or rotated text
-- Use PDFs with good contrast between text and background
+- Higher-quality scans produce better results
+- Clear, high-contrast text works best
+- The app renders pages at 3x scale before OCR — this balances accuracy against speed
+- Heavily skewed or rotated text may reduce accuracy
 
 ## Customization
 
-### Add More Languages
+### Add OCR languages
 
-Edit `main.js` and change the language code:
-
-```javascript
-const worker = await createWorker('eng'); // Change 'eng' to desired language
-```
-
-Supported languages: eng, fra, deu, spa, chi_sim, and [many more](https://tesseract-ocr.github.io/tessdoc/Data-Files-in-different-versions.html)
-
-### Adjust OCR Quality
-
-Modify the viewport scale for better accuracy (higher = better quality but slower):
+In `main.js`, find the `createWorker` call and change the language codes:
 
 ```javascript
-const viewport = page.getViewport({ scale: 2.0 }); // Increase for better quality
+const worker = await createWorker(['heb', 'eng']);
 ```
 
-## Browser Support
+See the [Tesseract language list](https://tesseract-ocr.github.io/tessdoc/Data-Files-in-different-versions.html) for available codes.
 
-- Chrome/Edge: ✅ Full support
-- Firefox: ✅ Full support
-- Safari: ✅ Full support
-- Mobile browsers: ✅ Supported (with performance considerations)
+### Adjust OCR resolution
 
-## File Structure
+Change `PDF_RENDER_SCALE` in the `CONFIG` object at the top of `main.js`:
 
-```
-pdf-ocr-app/
-├── index.html          # Main HTML file
-├── main.js             # OCR processing logic
-├── package.json        # Dependencies
-├── README.md           # Documentation
-└── vite.config.js      # Vite configuration (auto-generated)
+```javascript
+PDF_RENDER_SCALE: 3.0,  // higher = better quality, slower
 ```
 
-## Troubleshooting
+## Tech stack
 
-### Issue: OCR is slow
-- **Solution**: Processing is resource-intensive. Try smaller PDFs or fewer pages at a time.
+- [Tesseract.js](https://tesseract.projectnaptha.com/) — browser-based OCR engine
+- [PDF.js](https://mozilla.github.io/pdf.js/) — Mozilla's PDF renderer
+- [Mammoth.js](https://github.com/mwilliamson/mammoth.js) — DOCX text extraction
+- [Vite](https://vitejs.dev/) — build tool and dev server
 
-### Issue: Low accuracy
-- **Solution**: Increase the viewport scale in `main.js` (line 137) from 2.0 to 3.0 or higher.
+## Browser support
 
-### Issue: Can't upload file
-- **Solution**: Ensure file is under 500MB and is a valid PDF or DOCX format.
-
-## Privacy & Security
-
-- All processing happens in your browser
-- No data is sent to external servers
-- Files are processed locally using Web Workers
-- Safe for sensitive documents
+Works on modern browsers (Chrome, Firefox, Safari, Edge). Requires Web Workers and Canvas API support.
 
 ## License
 
-MIT License - feel free to use and modify as needed.
-
-## Contributing
-
-Contributions welcome! Feel free to submit issues or pull requests.
+MIT
