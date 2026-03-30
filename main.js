@@ -791,28 +791,36 @@ function displayVerificationResults(result) {
 }
 
 // Clear/Reset
-clearBtn.addEventListener('click', () => {
+clearBtn.addEventListener('click', async () => {
     currentFile = null;
     currentPdf = null;
     currentFileType = null;
     if (currentFileUrl) { URL.revokeObjectURL(currentFileUrl); currentFileUrl = null; }
-    extractedText = '';
-    embeddedText = '';
     comparisonResult = null;
+    totalChars = 0;
+    totalWords = 0;
+    processedPages = 0;
+    displayedPages = 0;
+
+    await clearAll();
 
     fileInput.value = '';
     fileInfo.classList.remove('active');
     previewContainer.style.display = 'none';
-    pdfPreview.innerHTML = '';
+    pdfPreview.textContent = '';
 
     processBtn.disabled = true;
     clearBtn.disabled = true;
 
-    resultText.innerHTML = '<div class="empty-state">Upload a PDF and click "Start OCR Processing" to extract text</div>';
+    const emptyState = document.createElement('div');
+    emptyState.className = 'empty-state';
+    emptyState.textContent = 'Upload a PDF and click "Start OCR Processing" to extract text';
+    resultText.textContent = '';
+    resultText.appendChild(emptyState);
+
     statsContainer.style.display = 'none';
     actionButtons.style.display = 'none';
-
-    // Hide verification panel
+    document.getElementById('loadMoreContainer').style.display = 'none';
     document.getElementById('verificationPanel').classList.remove('active');
 
     progressFill.style.width = '0%';
