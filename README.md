@@ -94,6 +94,13 @@ PDF_RENDER_SCALE: 3.0,  // higher = better quality, slower
 - [Vite](https://vitejs.dev/) — build tool and dev server
 - [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) — browser-native storage for incremental results and crash recovery
 
+## Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [Install and Deploy](docs/installation.md#install-and-deploy-pdfocr) | Self-hosting on GitHub Pages, nginx, Apache, Docker, Caddy |
+| [Developer Setup](docs/installation.md#developer-setup) | Project structure, code organization, making changes, testing |
+
 ## Browser support
 
 Works on modern browsers (Chrome, Firefox, Safari, Edge). Requires Web Workers, Canvas API, and IndexedDB support.
