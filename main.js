@@ -914,3 +914,39 @@ function formatFileSize(bytes) {
 
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }
+
+// Check for interrupted extraction on page load
+(async function checkRecovery() {
+    try {
+        const meta = await readMeta();
+        if (!meta || meta.status !== 'in_progress') return;
+
+        const banner = document.getElementById('recoveryBanner');
+        const info = document.getElementById('recoveryInfo');
+        info.textContent = ' ' + meta.completedPages + ' of ' + meta.totalPages + ' pages were saved from "' + meta.fileName + '".';
+        banner.style.display = 'block';
+
+        document.getElementById('recoveryDownloadBtn').addEventListener('click', async () => {
+            const fullText = await assembleFullText();
+            const blob = new Blob([fullText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = meta.fileName.replace(/\.(pdf|docx)$/i, '') + '_partial.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            await clearAll();
+            banner.style.display = 'none';
+        });
+
+        document.getElementById('recoveryDismissBtn').addEventListener('click', async () => {
+            await clearAll();
+            banner.style.display = 'none';
+        });
+    } catch (error) {
+        console.error('Recovery check failed:', error);
+    }
+})();
