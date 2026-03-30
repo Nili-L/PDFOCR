@@ -244,6 +244,15 @@ function appendPageToDisplay(pageNumber, text, force = false) {
     displayedPages++;
 }
 
+async function assembleFullText() {
+    const pages = await readAllPages();
+    return pages
+        .filter(p => p.method !== 'error')
+        .map(p => '\n--- Page ' + p.pageNumber + ' ---\n' + p.text)
+        .join('\n')
+        .trim();
+}
+
 processBtn.addEventListener('click', async () => {
     if (!currentFile) return;
 
@@ -786,58 +795,58 @@ clearBtn.addEventListener('click', () => {
 // Copy to Clipboard
 copyBtn.addEventListener('click', async () => {
     try {
-        await navigator.clipboard.writeText(extractedText);
+        const fullText = await assembleFullText();
+        await navigator.clipboard.writeText(fullText);
 
         const originalText = copyBtn.textContent;
         copyBtn.textContent = 'Copied!';
-
-        setTimeout(() => {
-            copyBtn.textContent = originalText;
-        }, 2000);
+        setTimeout(() => { copyBtn.textContent = originalText; }, 2000);
     } catch (error) {
         alert('Failed to copy text to clipboard');
     }
 });
 
 // Download as TXT with verification report
-downloadBtn.addEventListener('click', () => {
+downloadBtn.addEventListener('click', async () => {
+    const fullText = await assembleFullText();
+    const pages = await readAllPages();
     let content = '';
 
-    // Add verification report if available
     if (comparisonResult) {
-        content += '=' .repeat(80) + '\n';
+        content += '='.repeat(80) + '\n';
         content += 'VERIFICATION REPORT\n';
         content += '='.repeat(80) + '\n\n';
 
-        content += `Overall Assessment: ${comparisonResult.overallAssessment}\n\n`;
+        content += 'Overall Assessment: ' + comparisonResult.overallAssessment + '\n\n';
 
         if (comparisonResult.hasEmbeddedText) {
-            content += `Similarity Score: ${comparisonResult.similarity}%\n\n`;
+            content += 'Similarity Score: ' + comparisonResult.similarity + '%\n\n';
         }
 
-        content += `Semantic Integrity: ${comparisonResult.semanticIntegrity}\n\n`;
+        content += 'Semantic Integrity: ' + comparisonResult.semanticIntegrity + '\n\n';
 
         if (comparisonResult.criticalErrors && comparisonResult.criticalErrors.length > 0) {
             content += 'CRITICAL ERRORS:\n';
-            comparisonResult.criticalErrors.forEach(error => {
-                content += `  - ${error}\n`;
-            });
+            comparisonResult.criticalErrors.forEach(function(e) { content += '  - ' + e + '\n'; });
             content += '\n';
         }
 
         if (comparisonResult.structuralDifferences && comparisonResult.structuralDifferences.length > 0) {
             content += 'STRUCTURAL DIFFERENCES:\n';
-            comparisonResult.structuralDifferences.forEach(diff => {
-                content += `  - ${diff}\n`;
-            });
+            comparisonResult.structuralDifferences.forEach(function(d) { content += '  - ' + d + '\n'; });
             content += '\n';
         }
 
         if (comparisonResult.textAccuracyIssues && comparisonResult.textAccuracyIssues.length > 0) {
             content += 'TEXT ACCURACY ISSUES:\n';
-            comparisonResult.textAccuracyIssues.forEach(issue => {
-                content += `  - ${issue}\n`;
-            });
+            comparisonResult.textAccuracyIssues.forEach(function(issue) { content += '  - ' + issue + '\n'; });
+            content += '\n';
+        }
+
+        const failedPages = pages.filter(function(p) { return p.method === 'error'; });
+        if (failedPages.length > 0) {
+            content += 'FAILED PAGES:\n';
+            failedPages.forEach(function(p) { content += '  - Page ' + p.pageNumber + ': ' + p.error + '\n'; });
             content += '\n';
         }
 
@@ -846,14 +855,13 @@ downloadBtn.addEventListener('click', () => {
         content += '='.repeat(80) + '\n\n';
     }
 
-    // Add extracted text
-    content += extractedText;
+    content += fullText;
 
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${currentFile.name.replace(/\.(pdf|docx)$/i, '')}_extracted.txt`;
+    a.download = currentFile.name.replace(/\.(pdf|docx)$/i, '') + '_extracted.txt';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
