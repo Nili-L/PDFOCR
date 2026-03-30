@@ -15,8 +15,7 @@ For PDFs, the app first tries to extract embedded text directly. If that text is
 ## What you get
 
 - **Extracted text** with character count, word count, and page count
-- **Integrity verification** — when a PDF has embedded text, the app scores the extraction quality and flags accuracy issues
-- **Verification report** included in the downloaded `.txt` file
+- **Extraction report** — the downloaded `.txt` file includes the extraction method used and lists any pages that failed processing
 - **PDF preview** — thumbnail previews of the first 5 pages before processing
 
 ## Privacy
