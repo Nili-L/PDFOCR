@@ -289,6 +289,7 @@ processBtn.addEventListener('click', async () => {
     displayedPages = 0;
     resultText.textContent = '';
     document.getElementById('recoveryBanner').style.display = 'none';
+    document.getElementById('loadMoreContainer').style.display = 'none';
     await clearAll();
 
     try {
@@ -441,7 +442,7 @@ function isTextReadable(text) {
     return true;
 }
 
-// Extract embedded text from PDF while preserving formatting
+// Extract embedded text from PDF (plain text, whitespace collapsed)
 async function extractEmbeddedText(pdf) {
     let fullText = '';
 
