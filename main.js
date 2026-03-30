@@ -253,6 +253,34 @@ async function assembleFullText() {
         .trim();
 }
 
+function showLoadMoreButton() {
+    const container = document.getElementById('loadMoreContainer');
+    container.style.display = 'block';
+
+    const btn = document.getElementById('loadMoreBtn');
+    btn.textContent = 'Load more pages (showing ' + displayedPages + ' of ' + processedPages + ')';
+}
+
+document.getElementById('loadMoreBtn').addEventListener('click', async () => {
+    const nextStart = displayedPages + 1;
+    const pages = await readPages(nextStart, DISPLAY_PAGE_LIMIT);
+
+    for (const page of pages) {
+        if (page.method === 'error') {
+            appendPageToDisplay(page.pageNumber, '[Error: ' + page.error + ']', true);
+        } else {
+            appendPageToDisplay(page.pageNumber, page.text, true);
+        }
+    }
+
+    if (displayedPages >= processedPages) {
+        document.getElementById('loadMoreContainer').style.display = 'none';
+    } else {
+        const btn = document.getElementById('loadMoreBtn');
+        btn.textContent = 'Load more pages (showing ' + displayedPages + ' of ' + processedPages + ')';
+    }
+});
+
 processBtn.addEventListener('click', async () => {
     if (!currentFile) return;
 
