@@ -392,8 +392,8 @@ async function extractTextFromPdf(pdf) {
             const viewport = page.getViewport({ scale: CONFIG.PDF_RENDER_SCALE });
 
             // Render page to canvas with higher quality
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
+            let canvas = document.createElement('canvas');
+            let context = canvas.getContext('2d');
             canvas.width = viewport.width;
             canvas.height = viewport.height;
 
@@ -404,13 +404,17 @@ async function extractTextFromPdf(pdf) {
                 intent: 'print' // Use print-quality rendering
             }).promise;
 
-            // No preprocessing - use raw PDF rendering
-            // lightPreprocessing(context, canvas.width, canvas.height);
-
             // Run OCR on canvas with high quality settings
             const { data: { text } } = await worker.recognize(canvas, {
                 rotateAuto: true,
             });
+
+            // Release canvas pixel buffer immediately — this is the main memory optimization.
+            // Setting dimensions to 0 forces synchronous release of the backing store.
+            canvas.width = 0;
+            canvas.height = 0;
+            canvas = null;
+            context = null;
 
             // Text already includes line breaks from Tesseract
             fullText += `\n--- Page ${i} ---\n${text}\n`;
