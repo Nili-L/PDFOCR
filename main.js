@@ -32,7 +32,6 @@ const downloadBtn = document.getElementById('downloadBtn');
 const CONFIG = {
     MAX_PREVIEW_PAGES: 5,
     PDF_RENDER_SCALE: 3.0,
-    MAX_FILE_SIZE_MB: 25,
     SIMILARITY_THRESHOLDS: { EXCELLENT: 95, GOOD: 85, FAIR: 70 }
 };
 
@@ -112,12 +111,6 @@ fileInput.addEventListener('change', (e) => {
 
 // Handle File Selection
 async function handleFileSelect(file) {
-    // Check file size (500MB limit)
-    if (file.size > CONFIG.MAX_FILE_SIZE_MB * 1024 * 1024) {
-        alert('File size exceeds 500MB limit');
-        return;
-    }
-
     // Determine file type
     if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
         currentFileType = 'pdf';
