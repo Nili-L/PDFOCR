@@ -197,8 +197,18 @@ async function loadPdfPreview(file) {
         previewContainer.style.display = 'block';
 
     } catch (error) {
-        console.error('Error loading PDF preview:', error);
-        alert('Error loading PDF preview');
+        console.error('Error loading PDF:', error);
+        if (error.message && (error.message.includes('memory') || error.message.includes('allocation') || error.name === 'RangeError')) {
+            alert('This file is too large for your browser to handle. Try closing other tabs or using a smaller file.');
+        } else {
+            alert('Error loading PDF: ' + error.message);
+        }
+        currentFile = null;
+        currentPdf = null;
+        currentFileType = null;
+        if (currentFileUrl) { URL.revokeObjectURL(currentFileUrl); currentFileUrl = null; }
+        fileInfo.classList.remove('active');
+        processBtn.disabled = true;
     }
 }
 
