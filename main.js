@@ -1,7 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { createWorker } from 'tesseract.js';
 import mammoth from 'mammoth';
-import { openDB, writePage, readPages, readAllPages, writeMeta, readMeta, clearAll } from './db.js';
+import { writePage, readPages, readAllPages, writeMeta, readMeta, clearAll } from './db.js';
 
 // Configure PDF.js worker — bundled locally, no external CDN
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
@@ -336,7 +336,17 @@ processBtn.addEventListener('click', async () => {
                     'embedded', 'Text extracted directly from PDF'
                 );
             } else {
-                // Embedded text was garbled — redo with OCR
+                // Embedded text was garbled — redo with OCR.
+                // Mark as discarded BEFORE clearing, so a crash during clearAll
+                // doesn't leave stale garbled pages as a recoverable result.
+                await writeMeta({
+                    fileName: currentFile.name,
+                    totalPages: currentPdf.numPages,
+                    completedPages: 0,
+                    startedAt: new Date().toISOString(),
+                    status: 'discarded',
+                });
+
                 totalChars = 0;
                 totalWords = 0;
                 processedPages = 0;
@@ -547,6 +557,7 @@ async function extractTextFromPdf(pdf) {
                 } catch (retryError) {
                     console.error(`Page ${i} failed after retry:`, retryError);
                     await writePage(i, '', 'error', retryError.message);
+                    processedPages = i;
                     appendPageToDisplay(i, '[Error: ' + retryError.message + ']');
                 }
             }
