@@ -326,13 +326,17 @@ processBtn.addEventListener('click', async () => {
         } else {
             if (!currentPdf) throw new Error('PDF failed to load. Please try re-uploading the file.');
 
-            updateProgress(30, 'Extracting embedded text...');
+            const forceOcr = document.getElementById('forceOcrCheckbox').checked;
 
-            const embeddedText = await extractEmbeddedText(currentPdf);
+            let hasGoodEmbeddedText = false;
+            if (!forceOcr) {
+                updateProgress(30, 'Extracting embedded text...');
+                const embeddedText = await extractEmbeddedText(currentPdf);
 
-            const hasGoodEmbeddedText = embeddedText &&
-                                       embeddedText.trim().length > 100 &&
-                                       isTextReadable(embeddedText);
+                hasGoodEmbeddedText = embeddedText &&
+                                      embeddedText.trim().length > 100 &&
+                                      isTextReadable(embeddedText);
+            }
 
             if (hasGoodEmbeddedText) {
                 updateProgress(100, 'Using embedded text (100% accuracy)...');
