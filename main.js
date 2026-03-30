@@ -288,6 +288,7 @@ processBtn.addEventListener('click', async () => {
     processedPages = 0;
     displayedPages = 0;
     resultText.textContent = '';
+    document.getElementById('recoveryBanner').style.display = 'none';
     await clearAll();
 
     try {
@@ -632,6 +633,7 @@ clearBtn.addEventListener('click', async () => {
     statsContainer.style.display = 'none';
     actionButtons.style.display = 'none';
     document.getElementById('loadMoreContainer').style.display = 'none';
+    document.getElementById('recoveryBanner').style.display = 'none';
     document.getElementById('verificationPanel').classList.remove('active');
 
     progressFill.style.width = '0%';
