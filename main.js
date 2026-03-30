@@ -33,7 +33,6 @@ const downloadBtn = document.getElementById('downloadBtn');
 const CONFIG = {
     MAX_PREVIEW_PAGES: 5,
     PDF_RENDER_SCALE: 3.0,
-    SIMILARITY_THRESHOLDS: { EXCELLENT: 95, GOOD: 85, FAIR: 70 }
 };
 
 function updateProgress(percentage, message) {
@@ -43,16 +42,8 @@ function updateProgress(percentage, message) {
 }
 
 
-function createComparisonResult(hasEmbeddedText, similarity, message) {
-    return {
-        hasEmbeddedText,
-        similarity,
-        criticalErrors: [],
-        structuralDifferences: [],
-        textAccuracyIssues: [],
-        semanticIntegrity: message,
-        overallAssessment: message
-    };
+function createExtractionSummary(method, message) {
+    return { method, message };
 }
 
 // State
@@ -60,7 +51,7 @@ let currentFile = null;
 let currentPdf = null;
 let currentFileType = null; // 'pdf' or 'docx'
 let currentFileUrl = null;
-let comparisonResult = null;
+let extractionSummary = null;
 let totalChars = 0;
 let totalWords = 0;
 let processedPages = 0;
@@ -319,8 +310,8 @@ processBtn.addEventListener('click', async () => {
 
             updateProgress(100, 'Complete!');
 
-            comparisonResult = createComparisonResult(
-                true, 100, 'Text extracted directly from document (100% accuracy)'
+            extractionSummary = createExtractionSummary(
+                'embedded', 'Text extracted directly from document'
             );
 
         } else {
@@ -341,8 +332,8 @@ processBtn.addEventListener('click', async () => {
             if (hasGoodEmbeddedText) {
                 updateProgress(100, 'Using embedded text (100% accuracy)...');
 
-                comparisonResult = createComparisonResult(
-                    true, 100, 'Text extracted directly from PDF (100% accuracy)'
+                extractionSummary = createExtractionSummary(
+                    'embedded', 'Text extracted directly from PDF'
                 );
             } else {
                 // Embedded text was garbled — redo with OCR
@@ -353,13 +344,25 @@ processBtn.addEventListener('click', async () => {
                 resultText.textContent = '';
                 await clearAll();
 
-                updateProgress(50, 'Embedded text is garbled - performing OCR...');
+                // Write meta immediately so a crash before the first OCR page
+                // still leaves a recoverable in_progress record.
+                await writeMeta({
+                    fileName: currentFile.name,
+                    totalPages: currentPdf.numPages,
+                    completedPages: 0,
+                    startedAt: new Date().toISOString(),
+                    status: 'in_progress',
+                });
+
+                updateProgress(50, forceOcr ? 'Performing OCR...' : 'Embedded text is garbled - performing OCR...');
                 await extractTextFromPdf(currentPdf);
 
                 updateProgress(100, 'OCR complete');
 
-                comparisonResult = createComparisonResult(
-                    false, 100, 'OCR extraction complete - embedded text was garbled/unreadable'
+                extractionSummary = createExtractionSummary(
+                    'ocr', forceOcr
+                        ? 'OCR extraction complete (forced by user)'
+                        : 'OCR extraction complete - embedded text was garbled/unreadable'
                 );
             }
 
@@ -373,7 +376,7 @@ processBtn.addEventListener('click', async () => {
         }
 
         actionButtons.style.display = 'flex';
-        displayVerificationResults(comparisonResult);
+        displayExtractionSummary(extractionSummary);
 
         if (processedPages > DISPLAY_PAGE_LIMIT) {
             showLoadMoreButton();
@@ -565,76 +568,26 @@ async function extractTextFromPdf(pdf) {
     }
 }
 
-// Display verification results in UI
-function displayVerificationResults(result) {
-    const verificationPanel = document.getElementById('verificationPanel');
-    const verificationBadge = document.getElementById('verificationBadge');
-    const similarityFill = document.getElementById('similarityFill');
-    const criticalErrorsSection = document.getElementById('criticalErrorsSection');
-    const criticalErrorsList = document.getElementById('criticalErrorsList');
-    const structuralDifferencesSection = document.getElementById('structuralDifferencesSection');
-    const structuralDifferencesList = document.getElementById('structuralDifferencesList');
-    const textAccuracySection = document.getElementById('textAccuracySection');
-    const textAccuracyList = document.getElementById('textAccuracyList');
-    const semanticIntegrity = document.getElementById('semanticIntegrity');
+// Display extraction summary in UI
+function displayExtractionSummary(summary) {
+    const panel = document.getElementById('verificationPanel');
+    const badge = document.getElementById('verificationBadge');
     const overallAssessment = document.getElementById('overallAssessment');
 
-    // Show panel
-    verificationPanel.classList.add('active');
+    // Hide the similarity bar and detail sections — no real comparison is performed
+    document.getElementById('similarityFill').parentElement.parentElement.style.display = 'none';
+    document.getElementById('criticalErrorsSection').style.display = 'none';
+    document.getElementById('structuralDifferencesSection').style.display = 'none';
+    document.getElementById('textAccuracySection').style.display = 'none';
+    document.getElementById('semanticIntegrity').parentElement.style.display = 'none';
 
-    // Set badge
-    let badgeClass = 'badge-no-text';
-    let badgeText = 'No Embedded Text';
+    badge.className = 'verification-badge ' + (summary.method === 'embedded' ? 'badge-excellent' : 'badge-good');
+    badge.textContent = summary.method === 'embedded' ? 'Direct extraction' : 'OCR';
 
-    if (result.hasEmbeddedText) {
-        if (result.similarity >= 95) {
-            badgeClass = 'badge-excellent';
-            badgeText = 'Excellent';
-        } else if (result.similarity >= 85) {
-            badgeClass = 'badge-good';
-            badgeText = 'Good';
-        } else if (result.similarity >= 70) {
-            badgeClass = 'badge-fair';
-            badgeText = 'Fair';
-        } else {
-            badgeClass = 'badge-poor';
-            badgeText = 'Poor';
-        }
-    }
+    overallAssessment.textContent = summary.message;
+    overallAssessment.parentElement.style.display = 'block';
 
-    verificationBadge.className = `verification-badge ${badgeClass}`;
-    verificationBadge.textContent = badgeText;
-
-    // Set similarity bar
-    similarityFill.style.width = `${result.similarity}%`;
-    similarityFill.textContent = `${result.similarity}%`;
-
-    if (result.similarity < 70) {
-        similarityFill.style.background = 'linear-gradient(90deg, #dc3545, #c82333)';
-    } else if (result.similarity < 85) {
-        similarityFill.style.background = 'linear-gradient(90deg, #ffc107, #ff9800)';
-    } else if (result.similarity < 95) {
-        similarityFill.style.background = 'linear-gradient(90deg, #17a2b8, #138496)';
-    } else {
-        similarityFill.style.background = 'linear-gradient(90deg, #28a745, #20c997)';
-    }
-
-    function populateList(section, list, items) {
-        if (items && items.length > 0) {
-            section.style.display = 'block';
-            list.replaceChildren(...items.map(text => Object.assign(document.createElement('li'), { textContent: text })));
-        } else {
-            section.style.display = 'none';
-        }
-    }
-
-    populateList(criticalErrorsSection, criticalErrorsList, result.criticalErrors);
-    populateList(structuralDifferencesSection, structuralDifferencesList, result.structuralDifferences);
-    populateList(textAccuracySection, textAccuracyList, result.textAccuracyIssues);
-
-    // Semantic integrity and overall assessment
-    semanticIntegrity.textContent = result.semanticIntegrity;
-    overallAssessment.textContent = result.overallAssessment;
+    panel.classList.add('active');
 }
 
 // Clear/Reset
@@ -643,7 +596,7 @@ clearBtn.addEventListener('click', async () => {
     currentPdf = null;
     currentFileType = null;
     if (currentFileUrl) { URL.revokeObjectURL(currentFileUrl); currentFileUrl = null; }
-    comparisonResult = null;
+    extractionSummary = null;
     totalChars = 0;
     totalWords = 0;
     processedPages = 0;
@@ -695,48 +648,25 @@ downloadBtn.addEventListener('click', async () => {
     const pages = await readAllPages();
     let content = '';
 
-    if (comparisonResult) {
-        content += '='.repeat(80) + '\n';
-        content += 'VERIFICATION REPORT\n';
-        content += '='.repeat(80) + '\n\n';
+    content += '='.repeat(80) + '\n';
+    content += 'EXTRACTION REPORT\n';
+    content += '='.repeat(80) + '\n\n';
 
-        content += 'Overall Assessment: ' + comparisonResult.overallAssessment + '\n\n';
-
-        if (comparisonResult.hasEmbeddedText) {
-            content += 'Similarity Score: ' + comparisonResult.similarity + '%\n\n';
-        }
-
-        content += 'Semantic Integrity: ' + comparisonResult.semanticIntegrity + '\n\n';
-
-        if (comparisonResult.criticalErrors && comparisonResult.criticalErrors.length > 0) {
-            content += 'CRITICAL ERRORS:\n';
-            comparisonResult.criticalErrors.forEach(function(e) { content += '  - ' + e + '\n'; });
-            content += '\n';
-        }
-
-        if (comparisonResult.structuralDifferences && comparisonResult.structuralDifferences.length > 0) {
-            content += 'STRUCTURAL DIFFERENCES:\n';
-            comparisonResult.structuralDifferences.forEach(function(d) { content += '  - ' + d + '\n'; });
-            content += '\n';
-        }
-
-        if (comparisonResult.textAccuracyIssues && comparisonResult.textAccuracyIssues.length > 0) {
-            content += 'TEXT ACCURACY ISSUES:\n';
-            comparisonResult.textAccuracyIssues.forEach(function(issue) { content += '  - ' + issue + '\n'; });
-            content += '\n';
-        }
-
-        const failedPages = pages.filter(function(p) { return p.method === 'error'; });
-        if (failedPages.length > 0) {
-            content += 'FAILED PAGES:\n';
-            failedPages.forEach(function(p) { content += '  - Page ' + p.pageNumber + ': ' + p.error + '\n'; });
-            content += '\n';
-        }
-
-        content += '='.repeat(80) + '\n';
-        content += 'EXTRACTED TEXT\n';
-        content += '='.repeat(80) + '\n\n';
+    if (extractionSummary) {
+        content += 'Method: ' + extractionSummary.method + '\n';
+        content += 'Summary: ' + extractionSummary.message + '\n\n';
     }
+
+    const failedPages = pages.filter(function(p) { return p.method === 'error'; });
+    if (failedPages.length > 0) {
+        content += 'FAILED PAGES:\n';
+        failedPages.forEach(function(p) { content += '  - Page ' + p.pageNumber + ': ' + p.error + '\n'; });
+        content += '\n';
+    }
+
+    content += '='.repeat(80) + '\n';
+    content += 'EXTRACTED TEXT\n';
+    content += '='.repeat(80) + '\n\n';
 
     content += fullText;
 
