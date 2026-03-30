@@ -1,6 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { createWorker } from 'tesseract.js';
 import mammoth from 'mammoth';
+import { openDB, writePage, readPages, readAllPages, writeMeta, readMeta, clearAll } from './db.js';
 
 // Configure PDF.js worker — bundled locally, no external CDN
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
@@ -66,9 +67,10 @@ let currentFile = null;
 let currentPdf = null;
 let currentFileType = null; // 'pdf' or 'docx'
 let currentFileUrl = null;
-let extractedText = '';
-let embeddedText = '';
 let comparisonResult = null;
+let totalChars = 0;
+let totalWords = 0;
+let processedPages = 0;
 
 // Upload Area Events
 uploadArea.addEventListener('click', () => fileInput.click());
@@ -201,6 +203,47 @@ async function loadPdfPreview(file) {
 }
 
 // Process Document (PDF or DOCX)
+function updateIncrementalStats(pageText, currentPage) {
+    const chars = pageText.length;
+    const words = pageText.trim().split(/\s+/).filter(w => w.length > 0).length;
+    totalChars += chars;
+    totalWords += words;
+    processedPages = currentPage;
+
+    charCount.textContent = totalChars.toLocaleString();
+    wordCount.textContent = totalWords.toLocaleString();
+    pageCount.textContent = processedPages;
+    statsContainer.style.display = 'flex';
+}
+
+const DISPLAY_PAGE_LIMIT = 20;
+let displayedPages = 0;
+
+function appendPageToDisplay(pageNumber, text, force = false) {
+    if (!force && displayedPages >= DISPLAY_PAGE_LIMIT) return;
+
+    // Remove empty state placeholder on first page
+    if (displayedPages === 0) {
+        resultText.textContent = '';
+    }
+
+    const pageDiv = document.createElement('div');
+    pageDiv.style.marginBottom = '16px';
+
+    const header = document.createElement('div');
+    header.style.cssText = 'font-weight: 600; color: #667eea; margin-bottom: 4px; font-size: 0.85rem;';
+    header.textContent = 'Page ' + pageNumber;
+
+    const content = document.createElement('div');
+    content.style.cssText = 'white-space: pre-wrap; word-wrap: break-word;';
+    content.textContent = text;
+
+    pageDiv.appendChild(header);
+    pageDiv.appendChild(content);
+    resultText.appendChild(pageDiv);
+    displayedPages++;
+}
+
 processBtn.addEventListener('click', async () => {
     if (!currentFile) return;
 
@@ -208,13 +251,31 @@ processBtn.addEventListener('click', async () => {
     clearBtn.disabled = true;
     progressContainer.classList.add('active');
 
+    // Reset state for new extraction
+    totalChars = 0;
+    totalWords = 0;
+    processedPages = 0;
+    displayedPages = 0;
+    resultText.textContent = '';
+    await clearAll();
+
     try {
         if (currentFileType === 'docx') {
-            // Process DOCX file
             updateProgress(50, 'Extracting text from DOCX...');
 
-            extractedText = await extractTextFromDocx(currentFile);
-            embeddedText = extractedText; // For DOCX, embedded text is the extracted text
+            const docxText = await extractTextFromDocx(currentFile);
+
+            await writePage(1, docxText, 'embedded');
+            updateIncrementalStats(docxText, 1);
+            appendPageToDisplay(1, docxText);
+
+            await writeMeta({
+                fileName: currentFile.name,
+                totalPages: 1,
+                completedPages: 1,
+                startedAt: new Date().toISOString(),
+                status: 'completed',
+            });
 
             updateProgress(100, 'Complete!');
 
@@ -222,34 +283,34 @@ processBtn.addEventListener('click', async () => {
                 true, 100, 'Text extracted directly from document (100% accuracy)'
             );
 
-            // Display results
-            resultText.textContent = extractedText || 'No text extracted';
-
-            updateStatistics(extractedText);
-
         } else {
-            // Process PDF file
             if (!currentPdf) throw new Error('PDF failed to load. Please try re-uploading the file.');
 
             updateProgress(30, 'Extracting embedded text...');
 
-            embeddedText = await extractEmbeddedText(currentPdf);
+            const embeddedText = await extractEmbeddedText(currentPdf);
 
-            // Check if embedded text is sufficient and valid (not garbled)
             const hasGoodEmbeddedText = embeddedText &&
                                        embeddedText.trim().length > 100 &&
                                        isTextReadable(embeddedText);
 
             if (hasGoodEmbeddedText) {
                 updateProgress(100, 'Using embedded text (100% accuracy)...');
-                extractedText = embeddedText;
 
                 comparisonResult = createComparisonResult(
                     true, 100, 'Text extracted directly from PDF (100% accuracy)'
                 );
             } else {
+                // Embedded text was garbled — redo with OCR
+                totalChars = 0;
+                totalWords = 0;
+                processedPages = 0;
+                displayedPages = 0;
+                resultText.textContent = '';
+                await clearAll();
+
                 updateProgress(50, 'Embedded text is garbled - performing OCR...');
-                extractedText = await extractTextFromPdf(currentPdf);
+                await extractTextFromPdf(currentPdf);
 
                 updateProgress(100, 'OCR complete');
 
@@ -258,22 +319,26 @@ processBtn.addEventListener('click', async () => {
                 );
             }
 
-            // Display results
-            resultText.textContent = extractedText || 'No text extracted';
-
-            updateStatistics(extractedText, currentPdf.numPages);
+            await writeMeta({
+                fileName: currentFile.name,
+                totalPages: currentPdf.numPages,
+                completedPages: currentPdf.numPages,
+                startedAt: new Date().toISOString(),
+                status: 'completed',
+            });
         }
 
-        statsContainer.style.display = 'flex';
         actionButtons.style.display = 'flex';
-
-        // Display verification results
         displayVerificationResults(comparisonResult);
 
+        if (processedPages > DISPLAY_PAGE_LIMIT) {
+            showLoadMoreButton();
+        }
+
     } catch (error) {
-        console.error('Error processing PDF:', error);
-        alert('Error processing PDF: ' + error.message);
-        resultText.innerHTML = '<div class="empty-state">Error processing PDF. Please try again.</div>';
+        console.error('Error processing document:', error);
+        alert('Error processing document: ' + error.message);
+        resultText.textContent = 'Error processing document. Please try again.';
     } finally {
         progressContainer.classList.remove('active');
         processBtn.disabled = false;
@@ -326,7 +391,6 @@ async function extractEmbeddedText(pdf) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
 
-        // Let PDF.js handle the ordering
         const pageText = textContent.items
             .map(item => item.str)
             .join(' ')
@@ -334,6 +398,18 @@ async function extractEmbeddedText(pdf) {
             .trim();
 
         fullText += `\n--- Page ${i} ---\n${pageText}\n`;
+
+        await writePage(i, pageText, 'embedded');
+        updateIncrementalStats(pageText, i);
+        appendPageToDisplay(i, pageText);
+
+        await writeMeta({
+            fileName: currentFile.name,
+            totalPages: pdf.numPages,
+            completedPages: i,
+            startedAt: new Date().toISOString(),
+            status: 'in_progress',
+        });
     }
 
     return fullText.trim();
@@ -365,63 +441,102 @@ function lightPreprocessing(context, width, height) {
 
 // Extract Text from PDF via OCR
 async function extractTextFromPdf(pdf) {
-    // Use both Hebrew and English
-    const worker = await createWorker(['heb', 'eng'], 1, {
-        logger: () => {} // Suppress verbose logging
+    let worker = await createWorker(['heb', 'eng'], 1, {
+        logger: () => {}
     });
 
-    // Configure Tesseract to preserve line breaks and structure
     await worker.setParameters({
-        tessedit_pageseg_mode: '4', // Single column of variable-sized text - preserves paragraphs
-        tessedit_ocr_engine_mode: '1', // Use LSTM + legacy (best accuracy)
+        tessedit_pageseg_mode: '4',
+        tessedit_ocr_engine_mode: '1',
         preserve_interword_spaces: '1',
     });
 
-    let fullText = '';
-
     try {
         for (let i = 1; i <= pdf.numPages; i++) {
-            // Update progress
             const progress = Math.round((i / pdf.numPages) * 50 + 50);
-            progressFill.style.width = `${progress}%`;
-            progressFill.textContent = `${progress}%`;
-            progressText.textContent = `OCR processing page ${i} of ${pdf.numPages}...`;
+            updateProgress(progress, `OCR processing page ${i} of ${pdf.numPages}...`);
 
-            const page = await pdf.getPage(i);
-            // Use moderate scale of 3.0 - balance between quality and performance
-            const viewport = page.getViewport({ scale: CONFIG.PDF_RENDER_SCALE });
+            try {
+                const page = await pdf.getPage(i);
+                const viewport = page.getViewport({ scale: CONFIG.PDF_RENDER_SCALE });
 
-            // Render page to canvas with higher quality
-            let canvas = document.createElement('canvas');
-            let context = canvas.getContext('2d');
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
+                let canvas = document.createElement('canvas');
+                let context = canvas.getContext('2d');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
 
-            // Use better rendering quality
-            await page.render({
-                canvasContext: context,
-                viewport: viewport,
-                intent: 'print' // Use print-quality rendering
-            }).promise;
+                await page.render({
+                    canvasContext: context,
+                    viewport: viewport,
+                    intent: 'print'
+                }).promise;
 
-            // Run OCR on canvas with high quality settings
-            const { data: { text } } = await worker.recognize(canvas, {
-                rotateAuto: true,
+                const { data: { text } } = await worker.recognize(canvas, {
+                    rotateAuto: true,
+                });
+
+                canvas.width = 0;
+                canvas.height = 0;
+                canvas = null;
+                context = null;
+
+                await writePage(i, text, 'ocr');
+                updateIncrementalStats(text, i);
+                appendPageToDisplay(i, text);
+
+            } catch (pageError) {
+                try {
+                    await worker.terminate();
+                    worker = await createWorker(['heb', 'eng'], 1, { logger: () => {} });
+                    await worker.setParameters({
+                        tessedit_pageseg_mode: '4',
+                        tessedit_ocr_engine_mode: '1',
+                        preserve_interword_spaces: '1',
+                    });
+
+                    const page = await pdf.getPage(i);
+                    const viewport = page.getViewport({ scale: CONFIG.PDF_RENDER_SCALE });
+                    let canvas = document.createElement('canvas');
+                    let context = canvas.getContext('2d');
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+
+                    await page.render({
+                        canvasContext: context,
+                        viewport: viewport,
+                        intent: 'print'
+                    }).promise;
+
+                    const { data: { text } } = await worker.recognize(canvas, {
+                        rotateAuto: true,
+                    });
+
+                    canvas.width = 0;
+                    canvas.height = 0;
+                    canvas = null;
+                    context = null;
+
+                    await writePage(i, text, 'ocr');
+                    updateIncrementalStats(text, i);
+                    appendPageToDisplay(i, text);
+
+                } catch (retryError) {
+                    console.error(`Page ${i} failed after retry:`, retryError);
+                    await writePage(i, '', 'error', retryError.message);
+                    appendPageToDisplay(i, '[Error: ' + retryError.message + ']');
+                }
+            }
+
+            await writeMeta({
+                fileName: currentFile.name,
+                totalPages: pdf.numPages,
+                completedPages: i,
+                startedAt: new Date().toISOString(),
+                status: 'in_progress',
             });
-
-            // Release canvas pixel buffer immediately — this is the main memory optimization.
-            // Setting dimensions to 0 forces synchronous release of the backing store.
-            canvas.width = 0;
-            canvas.height = 0;
-            canvas = null;
-            context = null;
-
-            // Text already includes line breaks from Tesseract
-            fullText += `\n--- Page ${i} ---\n${text}\n`;
         }
 
         await worker.terminate();
-        return fullText.trim();
 
     } catch (error) {
         await worker.terminate();
