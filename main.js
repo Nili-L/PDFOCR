@@ -42,13 +42,6 @@ function updateProgress(percentage, message) {
     progressText.textContent = message;
 }
 
-function updateStatistics(text, pages) {
-    const chars = text.length;
-    const words = text.trim().split(/\s+/).filter(w => w.length > 0).length;
-    charCount.textContent = chars.toLocaleString();
-    wordCount.textContent = words.toLocaleString();
-    pageCount.textContent = pages || '-';
-}
 
 function createComparisonResult(hasEmbeddedText, similarity, message) {
     return {
@@ -462,29 +455,6 @@ async function extractEmbeddedText(pdf) {
     return fullText.trim();
 }
 
-// Light preprocessing - minimal enhancement
-function lightPreprocessing(context, width, height) {
-    const imageData = context.getImageData(0, 0, width, height);
-    const data = imageData.data;
-
-    // Very light contrast enhancement only
-    for (let i = 0; i < data.length; i += 4) {
-        // Calculate grayscale
-        const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-
-        // Very light contrast boost
-        const contrast = 1.1;
-        const factor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
-        let enhanced = factor * (gray - 128) + 128;
-        enhanced = Math.max(0, Math.min(255, enhanced));
-
-        data[i] = enhanced;
-        data[i + 1] = enhanced;
-        data[i + 2] = enhanced;
-    }
-
-    context.putImageData(imageData, 0, 0);
-}
 
 // Extract Text from PDF via OCR
 async function extractTextFromPdf(pdf) {
@@ -589,143 +559,6 @@ async function extractTextFromPdf(pdf) {
         await worker.terminate();
         throw error;
     }
-}
-
-// Compare OCR text with embedded text
-function compareTexts(ocrText, embeddedText) {
-    const result = {
-        hasEmbeddedText: embeddedText && embeddedText.trim().length > 50,
-        similarity: 0,
-        criticalErrors: [],
-        structuralDifferences: [],
-        textAccuracyIssues: [],
-        semanticIntegrity: '',
-        overallAssessment: ''
-    };
-
-    if (!result.hasEmbeddedText) {
-        result.overallAssessment = 'No embedded text found - this is a scanned document. OCR is the only option.';
-        result.semanticIntegrity = 'Cannot verify - no reference text available';
-        return result;
-    }
-
-    // Aggressive normalization for OCR comparison - focus on content not formatting
-    const normalizeText = (text) => text
-        .toLowerCase()
-        // Normalize all whitespace to single spaces
-        .replace(/\s+/g, ' ')
-        // Remove page markers and common OCR artifacts
-        .replace(/---\s*page\s*\d+\s*---/gi, '')
-        // Normalize quotes and apostrophes
-        .replace(/[`'''‛‚]/g, "'")
-        .replace(/[""„‟]/g, '"')
-        // Normalize dashes
-        .replace(/[–—−]/g, '-')
-        // Normalize Unicode to compatible form
-        .normalize('NFKC')
-        // Remove all punctuation and special characters except spaces and Hebrew
-        .replace(/[^\w\s\u0590-\u05FF]/g, '')
-        // Collapse multiple spaces
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    const ocrNorm = normalizeText(ocrText);
-    const embedNorm = normalizeText(embeddedText);
-
-    // Use combined similarity metrics for more accurate comparison
-    const similarity = calculateCombinedSimilarity(ocrNorm, embedNorm);
-    result.similarity = Math.round(similarity * 100);
-
-    // Analyze differences
-    if (result.similarity < 95) {
-        const ocrWords = ocrNorm.split(' ');
-        const embedWords = embedNorm.split(' ');
-
-        // Check for missing sections
-        if (Math.abs(ocrWords.length - embedWords.length) > embedWords.length * 0.1) {
-            result.criticalErrors.push(
-                `Word count mismatch: OCR has ${ocrWords.length} words, embedded text has ${embedWords.length} words`
-            );
-        }
-
-        // Check for structural issues
-        const ocrLines = ocrText.split('\n').length;
-        const embedLines = embeddedText.split('\n').length;
-        if (Math.abs(ocrLines - embedLines) > 5) {
-            result.structuralDifferences.push(
-                `Line structure differs: OCR has ${ocrLines} lines, embedded text has ${embedLines} lines`
-            );
-        }
-
-        // Sample character accuracy
-        if (result.similarity < 90) {
-            result.textAccuracyIssues.push(
-                `Character-level accuracy is below 90% (${result.similarity}%)`
-            );
-        }
-    }
-
-    // Semantic integrity assessment with higher thresholds
-    if (result.similarity >= 99) {
-        result.semanticIntegrity = 'Excellent - Near-perfect OCR accuracy';
-        result.overallAssessment = `Exceptional accuracy (${result.similarity}%) - OCR text is highly reliable`;
-    } else if (result.similarity >= 95) {
-        result.semanticIntegrity = 'Very Good - OCR text preserves meaning with minimal errors';
-        result.overallAssessment = `High accuracy (${result.similarity}%) - OCR text is reliable for most purposes`;
-    } else if (result.similarity >= 90) {
-        result.semanticIntegrity = 'Good - Minor OCR errors present but overall meaning preserved';
-        result.overallAssessment = `Good accuracy (${result.similarity}%) - Review recommended for critical use`;
-    } else if (result.similarity >= 80) {
-        result.semanticIntegrity = 'Fair - Some OCR errors may affect meaning in certain sections';
-        result.overallAssessment = `Moderate accuracy (${result.similarity}%) - Manual review required`;
-    } else {
-        result.semanticIntegrity = 'Poor - Significant OCR errors likely change meaning';
-        result.overallAssessment = `Low accuracy (${result.similarity}%) - Extensive manual correction needed`;
-    }
-
-    return result;
-}
-
-// Combined similarity using word-level Jaccard + character-level Dice coefficient
-function calculateCombinedSimilarity(str1, str2) {
-    if (str1 === str2) return 1.0;
-    if (!str1 || !str2) return 0.0;
-
-    // Split into words
-    const words1 = str1.split(/\s+/).filter(w => w.length > 0);
-    const words2 = str2.split(/\s+/).filter(w => w.length > 0);
-
-    // Word-level Jaccard similarity (good for overall content match)
-    const wordSet1 = new Set(words1);
-    const wordSet2 = new Set(words2);
-    const wordIntersection = new Set([...wordSet1].filter(x => wordSet2.has(x)));
-    const wordUnion = new Set([...wordSet1, ...wordSet2]);
-    const jaccardSimilarity = wordIntersection.size / wordUnion.size;
-
-    // Character-level Dice coefficient (good for handling minor OCR errors)
-    const bigrams1 = getBigrams(str1);
-    const bigrams2 = getBigrams(str2);
-    const bigramMap = new Map();
-    for (const b of bigrams2) bigramMap.set(b, (bigramMap.get(b) ?? 0) + 1);
-    let intersectionCount = 0;
-    for (const b of bigrams1) {
-        const count = bigramMap.get(b) ?? 0;
-        if (count > 0) { intersectionCount++; bigramMap.set(b, count - 1); }
-    }
-    const diceSimilarity = (2 * intersectionCount) / (bigrams1.length + bigrams2.length);
-
-    // Weighted combination: favor word-level but account for character errors
-    // 70% word similarity + 30% character similarity
-    return (jaccardSimilarity * 0.7) + (diceSimilarity * 0.3);
-}
-
-// Generate character bigrams for Dice coefficient
-function getBigrams(str) {
-    const bigrams = [];
-    for (let i = 0; i < str.length - 1; i++) {
-        bigrams.push(str.substring(i, i + 2));
-    }
-    return bigrams;
 }
 
 // Display verification results in UI
