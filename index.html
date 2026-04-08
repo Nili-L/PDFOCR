@@ -400,6 +400,15 @@
 </head>
 <body>
     <div class="container">
+        <div id="recoveryBanner" style="display: none; background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 15px 20px; margin-bottom: 20px; color: #856404;">
+            <strong>Previous extraction interrupted.</strong>
+            <span id="recoveryInfo"></span>
+            <div style="margin-top: 10px; display: flex; gap: 10px;">
+                <button id="recoveryDownloadBtn" style="background: #856404; padding: 8px 16px; font-size: 0.9rem;">Download partial results</button>
+                <button id="recoveryDismissBtn" style="background: #6c757d; padding: 8px 16px; font-size: 0.9rem;">Dismiss</button>
+            </div>
+        </div>
+
         <header>
             <h1>Document Text Extractor</h1>
             <p class="subtitle">Extract text from PDF and DOCX files using client-side processing</p>
@@ -414,7 +423,7 @@
                     <div class="upload-icon" aria-hidden="true">&#x2191;</div>
                     <p><strong>Click to upload</strong> or drag and drop</p>
                     <p style="font-size: 0.9rem; color: #6c757d; margin-top: 10px;">
-                        Supports PDF and DOCX files up to 25MB
+                        Supports PDF and DOCX files. Large files may require more available memory.
                     </p>
                 </div>
 
@@ -427,6 +436,9 @@
 
                 <div class="controls">
                     <button id="processBtn" disabled>Start OCR Processing</button>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; font-size: 0.85rem; color: #6c757d; cursor: pointer;">
+                        <input type="checkbox" id="forceOcrCheckbox"> Force OCR (skip embedded text)
+                    </label>
                     <button id="clearBtn" class="btn-secondary" disabled>Clear</button>
                 </div>
 
@@ -473,6 +485,10 @@
                 <div class="action-buttons" id="actionButtons" style="display: none;">
                     <button id="copyBtn" class="btn-success">Copy Text</button>
                     <button id="downloadBtn" class="btn-secondary">Download as TXT</button>
+                </div>
+
+                <div id="loadMoreContainer" style="display: none; text-align: center; margin-top: 10px;">
+                    <button id="loadMoreBtn" style="background: #6c757d;">Load more pages</button>
                 </div>
 
                 <div class="verification-panel" id="verificationPanel">
