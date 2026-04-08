@@ -2,6 +2,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { createWorker } from 'tesseract.js';
 import mammoth from 'mammoth';
 import { writePage, readPages, readAllPages, writeMeta, readMeta, clearAll } from './db.js';
+import { formatFileSize, isTextReadable, createExtractionSummary } from './helpers.js';
 
 // Configure PDF.js worker — bundled locally, no external CDN
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
@@ -28,6 +29,7 @@ const pageCount = document.getElementById('pageCount');
 const actionButtons = document.getElementById('actionButtons');
 const copyBtn = document.getElementById('copyBtn');
 const downloadBtn = document.getElementById('downloadBtn');
+const cancelBtn = document.getElementById('cancelBtn');
 
 // Config
 const CONFIG = {
@@ -42,10 +44,6 @@ function updateProgress(percentage, message) {
 }
 
 
-function createExtractionSummary(method, message) {
-    return { method, message };
-}
-
 // State
 let currentFile = null;
 let currentPdf = null;
@@ -55,6 +53,19 @@ let extractionSummary = null;
 let totalChars = 0;
 let totalWords = 0;
 let processedPages = 0;
+let activeWorker = null;  // current Tesseract worker (for cancel)
+let cancelRequested = false;
+
+// Cancel button — terminates the OCR worker and preserves partial results
+cancelBtn.addEventListener('click', async () => {
+    cancelRequested = true;
+    cancelBtn.disabled = true;
+    cancelBtn.textContent = 'Cancelling...';
+    if (activeWorker) {
+        try { await activeWorker.terminate(); } catch (_) { /* already dead */ }
+        activeWorker = null;
+    }
+});
 
 // Upload Area Events
 uploadArea.addEventListener('click', () => fileInput.click());
@@ -174,7 +185,10 @@ async function loadPdfPreview(file) {
             moreDiv.style.alignItems = 'center';
             moreDiv.style.justifyContent = 'center';
             moreDiv.style.background = '#e9ecef';
-            moreDiv.innerHTML = `<p style="text-align: center; color: #6c757d;">+${currentPdf.numPages - CONFIG.MAX_PREVIEW_PAGES} more pages</p>`;
+            const moreLabel = document.createElement('p');
+            moreLabel.style.cssText = 'text-align: center; color: #6c757d;';
+            moreLabel.textContent = `+${currentPdf.numPages - CONFIG.MAX_PREVIEW_PAGES} more pages`;
+            moreDiv.appendChild(moreLabel);
             pdfPreview.appendChild(moreDiv);
         }
 
@@ -280,6 +294,10 @@ processBtn.addEventListener('click', async () => {
 
     processBtn.disabled = true;
     clearBtn.disabled = true;
+    cancelRequested = false;
+    cancelBtn.style.display = 'inline-block';
+    cancelBtn.disabled = false;
+    cancelBtn.textContent = 'Cancel';
     progressContainer.classList.add('active');
 
     // Reset state for new extraction
@@ -369,26 +387,38 @@ processBtn.addEventListener('click', async () => {
                 updateProgress(50, forceOcr ? 'Performing OCR...' : 'Embedded text is garbled - performing OCR...');
                 await extractTextFromPdf(currentPdf);
 
-                updateProgress(100, 'OCR complete');
-
-                extractionSummary = createExtractionSummary(
-                    'ocr', forceOcr
-                        ? 'OCR extraction complete (forced by user)'
-                        : 'OCR extraction complete - embedded text was garbled/unreadable'
-                );
+                if (cancelRequested) {
+                    extractionSummary = createExtractionSummary(
+                        'ocr', `Cancelled by user after ${processedPages} of ${currentPdf.numPages} pages`
+                    );
+                } else {
+                    updateProgress(100, 'OCR complete');
+                    extractionSummary = createExtractionSummary(
+                        'ocr', forceOcr
+                            ? 'OCR extraction complete (forced by user)'
+                            : 'OCR extraction complete - embedded text was garbled/unreadable'
+                    );
+                }
             }
 
-            await writeMeta({
-                fileName: currentFile.name,
-                totalPages: currentPdf.numPages,
-                completedPages: currentPdf.numPages,
-                startedAt: new Date().toISOString(),
-                status: 'completed',
-            });
+            if (!cancelRequested) {
+                await writeMeta({
+                    fileName: currentFile.name,
+                    totalPages: currentPdf.numPages,
+                    completedPages: currentPdf.numPages,
+                    startedAt: new Date().toISOString(),
+                    status: 'completed',
+                });
+            }
+            // Cancelled: meta stays as in_progress so recovery works on reload
         }
 
-        actionButtons.style.display = 'flex';
-        displayExtractionSummary(extractionSummary);
+        if (processedPages > 0) {
+            actionButtons.style.display = 'flex';
+        }
+        if (extractionSummary) {
+            displayExtractionSummary(extractionSummary);
+        }
 
         if (processedPages > DISPLAY_PAGE_LIMIT) {
             showLoadMoreButton();
@@ -400,6 +430,8 @@ processBtn.addEventListener('click', async () => {
         resultText.textContent = 'Error processing document. Please try again.';
     } finally {
         progressContainer.classList.remove('active');
+        cancelBtn.style.display = 'none';
+        activeWorker = null;
         processBtn.disabled = false;
         clearBtn.disabled = false;
     }
@@ -417,30 +449,6 @@ async function extractTextFromDocx(file) {
     }
 }
 
-// Check if extracted text is readable (not garbled/gibberish)
-function isTextReadable(text) {
-    // Remove whitespace and common separators
-    const cleanText = text.replace(/[\s\-_]+/g, '');
-
-    // Count Hebrew characters
-    const hebrewChars = (cleanText.match(/[\u0590-\u05FF]/g) || []).length;
-
-    // Count Latin characters
-    const latinChars = (cleanText.match(/[a-zA-Z]/g) || []).length;
-
-    // Count numbers
-    const numbers = (cleanText.match(/[0-9]/g) || []).length;
-
-    // Total recognizable characters
-    const recognizable = hebrewChars + latinChars + numbers;
-
-    // If less than 50% of non-whitespace characters are recognizable, it's likely garbled
-    if (cleanText.length > 0 && recognizable / cleanText.length < 0.5) {
-        return false;
-    }
-
-    return true;
-}
 
 // Extract embedded text from PDF (plain text, whitespace collapsed)
 async function extractEmbeddedText(pdf) {
@@ -480,6 +488,7 @@ async function extractTextFromPdf(pdf) {
     let worker = await createWorker(['heb', 'eng'], 1, {
         logger: () => {}
     });
+    activeWorker = worker;
 
     await worker.setParameters({
         tessedit_pageseg_mode: '4',
@@ -489,6 +498,11 @@ async function extractTextFromPdf(pdf) {
 
     try {
         for (let i = 1; i <= pdf.numPages; i++) {
+            if (cancelRequested) {
+                updateProgress(0, `Cancelled after ${i - 1} of ${pdf.numPages} pages`);
+                break;
+            }
+
             const progress = Math.round((i / pdf.numPages) * 50 + 50);
             updateProgress(progress, `OCR processing page ${i} of ${pdf.numPages}...`);
 
@@ -521,9 +535,12 @@ async function extractTextFromPdf(pdf) {
                 appendPageToDisplay(i, text);
 
             } catch (pageError) {
+                if (cancelRequested) break;
+
                 try {
                     await worker.terminate();
                     worker = await createWorker(['heb', 'eng'], 1, { logger: () => {} });
+                    activeWorker = worker;
                     await worker.setParameters({
                         tessedit_pageseg_mode: '4',
                         tessedit_ocr_engine_mode: '1',
@@ -573,11 +590,13 @@ async function extractTextFromPdf(pdf) {
             });
         }
 
-        await worker.terminate();
+        try { await worker.terminate(); } catch (_) { /* already terminated by cancel */ }
+        activeWorker = null;
 
     } catch (error) {
-        await worker.terminate();
-        throw error;
+        try { await worker.terminate(); } catch (_) {}
+        activeWorker = null;
+        if (!cancelRequested) throw error;
     }
 }
 
@@ -694,17 +713,6 @@ downloadBtn.addEventListener('click', async () => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 });
-
-// Helper Functions
-function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Bytes';
-
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-}
 
 // Check for interrupted extraction on page load
 (async function checkRecovery() {

@@ -147,6 +147,10 @@
             transform: none;
         }
 
+        #cancelBtn:hover {
+            background: #c82333 !important;
+        }
+
         .progress-container {
             margin-top: 20px;
             display: none;
@@ -435,7 +439,8 @@
                 </div>
 
                 <div class="controls">
-                    <button id="processBtn" disabled>Start OCR Processing</button>
+                    <button id="processBtn" disabled>Extract Text</button>
+                    <button id="cancelBtn" style="display: none; background: #dc3545;" aria-label="Cancel extraction">Cancel</button>
                     <label style="display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; font-size: 0.85rem; color: #6c757d; cursor: pointer;">
                         <input type="checkbox" id="forceOcrCheckbox"> Force OCR (skip embedded text)
                     </label>
@@ -446,7 +451,7 @@
                     <div class="progress-bar">
                         <div class="progress-fill" id="progressFill">0%</div>
                     </div>
-                    <div class="progress-text" id="progressText">Initializing...</div>
+                    <div class="progress-text" id="progressText" aria-live="polite" role="status">Initializing...</div>
                 </div>
 
                 <div class="preview-container" id="previewContainer" style="display: none;">
